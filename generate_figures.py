@@ -191,38 +191,30 @@ def fig_bler_vs_blocklength():
 
 def fig_bler_vs_blockage():
     d = read_csv('bler_vs_blockage.csv')
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 4.0),
-                                    height_ratios=[3, 1], sharex=True)
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     p_blk = d['p_block']
 
-    ax1.semilogy(p_blk, np.maximum(d['no_interleaver'], 1e-8),
-                 'v-', color='#7f7f7f', lw=1.0, ms=4,
-                 label='Standard Polar (no interleaver)')
-    ax1.semilogy(p_blk, np.maximum(d['interleaver'], 1e-8),
-                 '^-', color='#d62728', lw=1.0, ms=4,
-                 label='Standard Polar + interleaver')
-    ax1.semilogy(p_blk, np.maximum(d['fixed'], 1e-8),
-                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                 label='Fixed diversity transform')
-    ax1.semilogy(p_blk, np.maximum(d['adaptive'], 1e-8),
-                 'o-', color='#1f77b4', lw=1.4, ms=4,
-                 label='Adaptive diversity transform')
+    ax.semilogy(p_blk, np.maximum(d['no_interleaver'], 1e-8),
+                'v-', color='#7f7f7f', lw=1.0, ms=4,
+                label='Standard Polar (no interleaver)')
+    ax.semilogy(p_blk, np.maximum(d['interleaver'], 1e-8),
+                '^-', color='#d62728', lw=1.0, ms=4,
+                label='Standard Polar + interleaver')
+    ax.semilogy(p_blk, np.maximum(d['fixed'], 1e-8),
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='Fixed diversity transform')
+    ax.semilogy(p_blk, np.maximum(d['adaptive'], 1e-8),
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='Adaptive diversity transform')
 
-    ax1.fill_between(p_blk, np.maximum(d['adaptive'], 1e-8),
-                     np.maximum(d['fixed'], 1e-8),
-                     alpha=0.12, color='#1f77b4')
+    ax.fill_between(p_blk, np.maximum(d['adaptive'], 1e-8),
+                    np.maximum(d['fixed'], 1e-8),
+                    alpha=0.12, color='#1f77b4')
 
-    ax1.set_ylabel('Block error rate (BLER)')
-    ax1.legend(fontsize=6, loc='lower right', framealpha=0.9)
-    ax1.grid(True, which='both', ls='--', alpha=0.3)
-
-    gain = np.clip(d['gain_ratio'], 0, 20)
-    ax2.bar(p_blk, gain, width=(p_blk[1] - p_blk[0]) * 0.7,
-            color='#1f77b4', alpha=0.7)
-    ax2.axhline(y=1.0, color='gray', ls='--', lw=0.8)
-    ax2.set_xlabel('Per-subchannel blockage probability')
-    ax2.set_ylabel('Gain (Fixed/Adaptive)', fontsize=7)
-    ax2.grid(True, ls='--', alpha=0.3)
+    ax.set_xlabel('Per-subchannel blockage probability')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=6, loc='lower right', framealpha=0.9)
+    ax.grid(True, which='both', ls='--', alpha=0.3)
 
     fig.tight_layout()
     save_figure(fig, 'bler_vs_blockage')

@@ -31,10 +31,13 @@ Date: 2026-02-21
 """
 
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import csv
 from typing import Dict, Tuple
 
+from sim_common import ieee_setup, save_figure
 from channel import (
     SNRCalculator, SPEED_OF_LIGHT, linear_to_db, db_to_linear,
     LargeScalePathLoss, AtmosphericParams, EnvironmentParams,
@@ -1176,102 +1179,76 @@ def simulate_bler_vs_elevation(N: int = 256, K: int = 128,
 
 def plot_bler_vs_power(results: Dict):
     """Plot BLER vs total transmit power for all 4 curves + 3 PPV bounds."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     p_total = results['P_total_dBW']
 
     ax.semilogy(p_total, np.maximum(results['ppv_adaptive_diversity'], 1e-8),
-                's--', color='#2ca02c', linewidth=1.5, markersize=6,
-                label='PPV Bound (adaptive diversity)')
+                's--', color='#2ca02c', lw=1.0, ms=3,
+                label='PPV bound (adaptive)')
     ax.semilogy(p_total, np.maximum(results['ppv_fixed_diversity'], 1e-8),
-                'p--', color='#17becf', linewidth=1.5, markersize=6,
-                label='PPV Bound (fixed diversity)')
+                'p--', color='#17becf', lw=1.0, ms=3,
+                label='PPV bound (fixed)')
     ax.semilogy(p_total, np.maximum(results['ppv_no_diversity'], 1e-8),
-                'h--', color='#9467bd', linewidth=1.5, markersize=6,
-                label='PPV Bound (no diversity)')
+                'h--', color='#9467bd', lw=1.0, ms=3,
+                label='PPV bound (no diversity)')
     ax.semilogy(p_total, np.maximum(results['no_interleaver'], 1e-8),
-                'v-', color='#7f7f7f', linewidth=1.8, markersize=8,
+                'v-', color='#7f7f7f', lw=1.0, ms=4,
                 label='Standard Polar (no interleaver)')
     ax.semilogy(p_total, np.maximum(results['interleaver'], 1e-8),
-                '^-', color='#d62728', linewidth=1.8, markersize=8,
-                label='Standard Polar + random interleaver')
+                '^-', color='#d62728', lw=1.0, ms=4,
+                label='Standard Polar + interleaver')
     ax.semilogy(p_total, np.maximum(results['fixed'], 1e-8),
-                'D-', color='#ff7f0e', linewidth=2, markersize=8,
-                label='Fixed Diversity Transform (MDS)')
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='Fixed diversity transform')
     ax.semilogy(p_total, np.maximum(results['adaptive'], 1e-8),
-                'o-', color='#1f77b4', linewidth=2.5, markersize=8,
-                label='Adaptive Diversity Transform (Proposed)')
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='Adaptive diversity transform')
 
-    # Shade the gap between Fixed and Adaptive to highlight adaptive gain
-    fixed_clip = np.maximum(results['fixed'], 1e-8)
-    adapt_clip = np.maximum(results['adaptive'], 1e-8)
-    ax.fill_between(p_total, adapt_clip, fixed_clip,
-                    alpha=0.18, color='#1f77b4',
-                    label='_nolegend_')
-
-    ax.set_xlabel(r'Total Transmit Power, $P_{\mathrm{GW}} + P_{\mathrm{SAT}}$ (dBW)',
-                  fontsize=12)
-    ax.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax.set_title('BLER vs Total Transmit Power: Polar-Coded OTFS with Diversity Transforms\n'
-                 f'(L={_L_TAPS} taps, MRC, cascaded relay, {_n_s} subchannels)',
-                 fontsize=13)
-    ax.legend(fontsize=9, loc='lower left')
-    ax.grid(True, which='both', linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Total transmit power $P_{\mathrm{total}}$ (dBW)')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=6, loc='lower left')
+    ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_ylim(5e-4, 2)
 
-    plt.tight_layout()
-    plt.savefig('bler_comparison.png', dpi=300, bbox_inches='tight')
-    print("Saved: bler_comparison.png")
-    plt.close()
+    save_figure(fig, 'bler_comparison')
 
 
 def plot_bler_vs_elevation(results: Dict):
     """Plot BLER vs elevation for all 4 curves + 3 PPV bounds."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     elev = results['elevation_deg']
 
     ax.semilogy(elev, np.maximum(results['ppv_adaptive_diversity'], 1e-7),
-                's--', color='#2ca02c', linewidth=1.5, markersize=6,
-                label='PPV Bound (adaptive diversity)')
+                's--', color='#2ca02c', lw=1.0, ms=3,
+                label='PPV bound (adaptive)')
     ax.semilogy(elev, np.maximum(results['ppv_fixed_diversity'], 1e-7),
-                'p--', color='#17becf', linewidth=1.5, markersize=6,
-                label='PPV Bound (fixed diversity)')
+                'p--', color='#17becf', lw=1.0, ms=3,
+                label='PPV bound (fixed)')
     ax.semilogy(elev, np.maximum(results['ppv_no_diversity'], 1e-7),
-                'h--', color='#9467bd', linewidth=1.5, markersize=6,
-                label='PPV Bound (no diversity)')
+                'h--', color='#9467bd', lw=1.0, ms=3,
+                label='PPV bound (no diversity)')
     ax.semilogy(elev, np.maximum(results['no_interleaver'], 1e-7),
-                'v-', color='#7f7f7f', linewidth=1.8, markersize=8,
+                'v-', color='#7f7f7f', lw=1.0, ms=4,
                 label='Standard Polar (no interleaver)')
     ax.semilogy(elev, np.maximum(results['interleaver'], 1e-7),
-                '^-', color='#d62728', linewidth=1.8, markersize=8,
-                label='Standard Polar + random interleaver')
+                '^-', color='#d62728', lw=1.0, ms=4,
+                label='Standard Polar + interleaver')
     ax.semilogy(elev, np.maximum(results['fixed'], 1e-7),
-                'D-', color='#ff7f0e', linewidth=2, markersize=8,
-                label='Fixed Diversity Transform (MDS)')
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='Fixed diversity transform')
     ax.semilogy(elev, np.maximum(results['adaptive'], 1e-7),
-                'o-', color='#1f77b4', linewidth=2.5, markersize=8,
-                label='Adaptive Diversity Transform (Proposed)')
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='Adaptive diversity transform')
 
-    # Shade the gap between Fixed and Adaptive
-    fixed_clip = np.maximum(results['fixed'], 1e-7)
-    adapt_clip = np.maximum(results['adaptive'], 1e-7)
-    ax.fill_between(elev, adapt_clip, fixed_clip,
-                    alpha=0.18, color='#1f77b4',
-                    label='_nolegend_')
-
-    ax.set_xlabel('Elevation Angle (degrees)', fontsize=12)
-    ax.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax.set_title('BLER vs Elevation: Polar-Coded OTFS with Diversity Transforms\n'
-                 f'(L={_L_TAPS} taps, MRC, cascaded relay, {_n_s} subchannels, '
-                 r'$P_{\mathrm{total}}$' + f'={results.get("P_total_dBW", 8.0):.0f} dBW)',
-                 fontsize=13)
-    ax.legend(fontsize=9, loc='upper right')
-    ax.grid(True, which='both', linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Elevation angle (degrees)')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=6, loc='upper right')
+    ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_ylim(5e-4, 2)
 
-    plt.tight_layout()
-    plt.savefig('bler_vs_elevation_comparison.png', dpi=300, bbox_inches='tight')
-    print("Saved: bler_vs_elevation_comparison.png")
-    plt.close()
+    save_figure(fig, 'bler_vs_elevation_comparison')
 
 
 # ============================================================================
@@ -1424,43 +1401,38 @@ def simulate_throughput_reliability(results_power: Dict, N: int = 256,
 
 def plot_throughput_reliability(throughput: Dict):
     """Plot effective throughput vs total transmit power."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     p_arr = throughput['P_total_dBW']
 
-    ax.plot(p_arr, throughput['capacity'], 'k--', linewidth=1.5, alpha=0.6,
-            label=r'AWGN Capacity $C(\bar{\gamma})$')
+    ax.plot(p_arr, throughput['capacity'], 'k--', lw=1.0, alpha=0.6,
+            label=r'AWGN capacity $C(\bar{\gamma})$')
     ax.plot(p_arr, throughput['ppv_adaptive_diversity'],
-            's--', color='#2ca02c', linewidth=1.2, markersize=5,
-            label='PPV Bound (adaptive)')
+            's--', color='#2ca02c', lw=1.0, ms=3,
+            label='PPV bound (adaptive)')
     ax.plot(p_arr, throughput['ppv_fixed_diversity'],
-            'p--', color='#17becf', linewidth=1.2, markersize=5,
-            label='PPV Bound (fixed)')
+            'p--', color='#17becf', lw=1.0, ms=3,
+            label='PPV bound (fixed)')
     ax.plot(p_arr, throughput['no_interleaver'],
-            'v-', color='#7f7f7f', linewidth=1.8, markersize=7,
+            'v-', color='#7f7f7f', lw=1.0, ms=4,
             label='Standard Polar (no interleaver)')
     ax.plot(p_arr, throughput['interleaver'],
-            '^-', color='#d62728', linewidth=1.8, markersize=7,
+            '^-', color='#d62728', lw=1.0, ms=4,
             label='Standard Polar + interleaver')
     ax.plot(p_arr, throughput['fixed'],
-            'D-', color='#ff7f0e', linewidth=2, markersize=7,
-            label='Fixed Diversity Transform')
+            'D-', color='#ff7f0e', lw=1.2, ms=4,
+            label='Fixed diversity transform')
     ax.plot(p_arr, throughput['adaptive'],
-            'o-', color='#1f77b4', linewidth=2.5, markersize=7,
-            label='Adaptive Diversity Transform')
+            'o-', color='#1f77b4', lw=1.4, ms=4,
+            label='Adaptive diversity transform')
 
-    ax.set_xlabel(r'Total Transmit Power, $P_{\mathrm{total}}$ (dBW)', fontsize=12)
-    ax.set_ylabel('Effective Throughput (bits/channel use)', fontsize=12)
-    ax.set_title('Throughput-Reliability Trade-off\n'
-                 f'({_n_s} subchannels, L={_L_TAPS} taps, Polar SCL)',
-                 fontsize=13)
-    ax.legend(fontsize=9, loc='lower right')
-    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Total transmit power $P_{\mathrm{total}}$ (dBW)')
+    ax.set_ylabel('Effective throughput (bits/channel use)')
+    ax.legend(fontsize=6, loc='lower right')
+    ax.grid(True, ls='--', alpha=0.3)
     ax.set_ylim(0, None)
 
-    plt.tight_layout()
-    plt.savefig('throughput_reliability.png', dpi=300, bbox_inches='tight')
-    print("Saved: throughput_reliability.png")
-    plt.close()
+    save_figure(fig, 'throughput_reliability')
 
 
 def save_throughput_csv(throughput: Dict):
@@ -1573,35 +1545,28 @@ def simulate_rank_recovery(n_s: int = _n_s, k_c: int = _DT_CONFIG.k_c,
 
 def plot_rank_recovery(results: Dict):
     """Plot rank recovery probability vs number of erased subchannels."""
-    fig, ax = plt.subplots(figsize=(8, 6))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     ne = results['n_erased']
     width = 0.35
 
-    bars1 = ax.bar(ne - width / 2, results['p_recovery_fixed'], width,
-                   color='#ff7f0e', alpha=0.85, label=r'$G_{\mathrm{FIX}}$')
-    bars2 = ax.bar(ne + width / 2, results['p_recovery_adaptive'], width,
-                   color='#1f77b4', alpha=0.85, label=r'$G_{\mathrm{DIV}} = T \cdot G_{\mathrm{FIX}}$')
+    ax.bar(ne - width / 2, results['p_recovery_fixed'], width,
+           color='#ff7f0e', alpha=0.85, label=r'$G_{\mathrm{FIX}}$')
+    ax.bar(ne + width / 2, results['p_recovery_adaptive'], width,
+           color='#1f77b4', alpha=0.85, label=r'$G_{\mathrm{DIV}} = T \cdot G_{\mathrm{FIX}}$')
 
-    # Annotate d_min line
     d_min = _DT_CONFIG.d_min
-    ax.axvline(x=d_min - 1 + 0.5, color='red', linestyle='--', linewidth=1.5,
+    ax.axvline(x=d_min - 1 + 0.5, color='red', ls='--', lw=1.0,
                alpha=0.7, label=f'$d_{{\\min}}-1 = {d_min - 1}$')
 
-    ax.set_xlabel('Number of Erased Subchannels', fontsize=12)
-    ax.set_ylabel('Rank Recovery Probability', fontsize=12)
-    ax.set_title('MDS Rank Recovery vs Subchannel Erasures\n'
-                 f'($n_s$={_n_s}, $k_c$={_DT_CONFIG.k_c}, $m$={_m}, '
-                 f'$d_{{\\min}}$={d_min})',
-                 fontsize=13)
-    ax.legend(fontsize=10)
+    ax.set_xlabel('Number of erased subchannels')
+    ax.set_ylabel('Rank recovery probability')
+    ax.legend(fontsize=7)
     ax.set_xticks(ne)
     ax.set_ylim(0, 1.15)
-    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+    ax.grid(True, axis='y', ls='--', alpha=0.3)
 
-    plt.tight_layout()
-    plt.savefig('rank_recovery.png', dpi=300, bbox_inches='tight')
-    print("Saved: rank_recovery.png")
-    plt.close()
+    save_figure(fig, 'rank_recovery')
 
 
 def save_rank_recovery_csv(results: Dict):
@@ -1700,50 +1665,37 @@ def simulate_bler_vs_blockage(N: int = 256, K: int = 128,
 
 def plot_bler_vs_blockage(results: Dict):
     """Plot BLER vs blockage probability with adaptive gain subplot."""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), height_ratios=[3, 1],
+    ieee_setup()
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.5, 4.0), height_ratios=[3, 1],
                                     sharex=True)
     p_blk = results['p_block']
 
-    # Top: BLER curves
     ax1.semilogy(p_blk, np.maximum(results['no_interleaver'], 1e-8),
-                 'v-', color='#7f7f7f', linewidth=1.8, markersize=8,
+                 'v-', color='#7f7f7f', lw=1.0, ms=4,
                  label='Standard Polar (no interleaver)')
     ax1.semilogy(p_blk, np.maximum(results['interleaver'], 1e-8),
-                 '^-', color='#d62728', linewidth=1.8, markersize=8,
+                 '^-', color='#d62728', lw=1.0, ms=4,
                  label='Standard Polar + interleaver')
     ax1.semilogy(p_blk, np.maximum(results['fixed'], 1e-8),
-                 'D-', color='#ff7f0e', linewidth=2, markersize=8,
-                 label='Fixed Diversity Transform')
+                 'D-', color='#ff7f0e', lw=1.2, ms=4,
+                 label='Fixed diversity transform')
     ax1.semilogy(p_blk, np.maximum(results['adaptive'], 1e-8),
-                 'o-', color='#1f77b4', linewidth=2.5, markersize=8,
-                 label='Adaptive Diversity Transform')
+                 'o-', color='#1f77b4', lw=1.4, ms=4,
+                 label='Adaptive diversity transform')
 
-    fixed_clip = np.maximum(results['fixed'], 1e-8)
-    adapt_clip = np.maximum(results['adaptive'], 1e-8)
-    ax1.fill_between(p_blk, adapt_clip, fixed_clip,
-                     alpha=0.18, color='#1f77b4')
+    ax1.set_ylabel('Block error rate (BLER)')
+    ax1.legend(fontsize=6, loc='lower right')
+    ax1.grid(True, which='both', ls='--', alpha=0.3)
 
-    ax1.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax1.set_title('BLER vs Blockage Probability\n'
-                  f'($P_{{\\mathrm{{total}}}}$=8 dBW, {_n_s} subchannels, '
-                  f'L={_L_TAPS} taps)',
-                  fontsize=13)
-    ax1.legend(fontsize=9, loc='lower right')
-    ax1.grid(True, which='both', linestyle='--', alpha=0.7)
-
-    # Bottom: Adaptive gain ratio
     gain = np.clip(results['gain_ratio'], 0, 20)
     ax2.bar(p_blk, gain, width=(p_blk[1] - p_blk[0]) * 0.7,
             color='#1f77b4', alpha=0.7)
-    ax2.axhline(y=1.0, color='gray', linestyle='--', linewidth=1)
-    ax2.set_xlabel('Per-Subchannel Blockage Probability', fontsize=12)
-    ax2.set_ylabel('Gain (Fixed/Adaptive)', fontsize=12)
-    ax2.grid(True, linestyle='--', alpha=0.5)
+    ax2.axhline(y=1.0, color='gray', ls='--', lw=0.8)
+    ax2.set_xlabel('Per-subchannel blockage probability')
+    ax2.set_ylabel('Gain (Fixed/Adaptive)', fontsize=7)
+    ax2.grid(True, ls='--', alpha=0.3)
 
-    plt.tight_layout()
-    plt.savefig('bler_vs_blockage.png', dpi=300, bbox_inches='tight')
-    print("Saved: bler_vs_blockage.png")
-    plt.close()
+    save_figure(fig, 'bler_vs_blockage')
 
 
 def save_bler_vs_blockage_csv(results: Dict):
@@ -1852,46 +1804,41 @@ def simulate_bler_vs_blocklength(blocklengths=None,
 
 def plot_bler_vs_blocklength(results: Dict):
     """Plot BLER vs blocklength for all 7 curves."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     bl = results['blocklength']
 
     ax.semilogy(bl, np.maximum(results['ppv_adaptive_diversity'], 1e-8),
-                's--', color='#2ca02c', linewidth=1.5, markersize=6,
-                label='PPV Bound (adaptive)')
+                's--', color='#2ca02c', lw=1.0, ms=3,
+                label='PPV bound (adaptive)')
     ax.semilogy(bl, np.maximum(results['ppv_fixed_diversity'], 1e-8),
-                'p--', color='#17becf', linewidth=1.5, markersize=6,
-                label='PPV Bound (fixed)')
+                'p--', color='#17becf', lw=1.0, ms=3,
+                label='PPV bound (fixed)')
     ax.semilogy(bl, np.maximum(results['ppv_no_diversity'], 1e-8),
-                'h--', color='#9467bd', linewidth=1.5, markersize=6,
-                label='PPV Bound (no diversity)')
+                'h--', color='#9467bd', lw=1.0, ms=3,
+                label='PPV bound (no diversity)')
     ax.semilogy(bl, np.maximum(results['no_interleaver'], 1e-8),
-                'v-', color='#7f7f7f', linewidth=1.8, markersize=8,
+                'v-', color='#7f7f7f', lw=1.0, ms=4,
                 label='Standard Polar (no interleaver)')
     ax.semilogy(bl, np.maximum(results['interleaver'], 1e-8),
-                '^-', color='#d62728', linewidth=1.8, markersize=8,
+                '^-', color='#d62728', lw=1.0, ms=4,
                 label='Standard Polar + interleaver')
     ax.semilogy(bl, np.maximum(results['fixed'], 1e-8),
-                'D-', color='#ff7f0e', linewidth=2, markersize=8,
-                label='Fixed Diversity Transform')
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='Fixed diversity transform')
     ax.semilogy(bl, np.maximum(results['adaptive'], 1e-8),
-                'o-', color='#1f77b4', linewidth=2.5, markersize=8,
-                label='Adaptive Diversity Transform')
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='Adaptive diversity transform')
 
-    ax.set_xlabel('Blocklength $n_c$', fontsize=12)
-    ax.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax.set_title('BLER vs Blocklength: Finite-Blocklength Performance\n'
-                 f'(Rate 1/2, $P_{{\\mathrm{{total}}}}$=8 dBW, {_n_s} subchannels)',
-                 fontsize=13)
-    ax.legend(fontsize=9, loc='upper right')
-    ax.grid(True, which='both', linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Blocklength $n_c$')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=6, loc='upper right')
+    ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_xscale('log', base=2)
     ax.set_xticks(results['blocklength'])
     ax.set_xticklabels([str(int(x)) for x in results['blocklength']])
 
-    plt.tight_layout()
-    plt.savefig('bler_vs_blocklength.png', dpi=300, bbox_inches='tight')
-    print("Saved: bler_vs_blocklength.png")
-    plt.close()
+    save_figure(fig, 'bler_vs_blocklength')
 
 
 def save_bler_vs_blocklength_csv(results: Dict):
@@ -1987,44 +1934,37 @@ def simulate_otfs_vs_ofdm(N: int = 256, K: int = 128,
 
 def plot_otfs_vs_ofdm(results: Dict):
     """Plot OTFS vs OFDM comparison."""
-    fig, ax = plt.subplots(figsize=(10, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     p_arr = results['P_total_dBW']
 
-    # OTFS curves (solid lines)
     ax.semilogy(p_arr, np.maximum(results['otfs_no_interleaver'], 1e-8),
-                'v-', color='#7f7f7f', linewidth=1.8, markersize=7,
-                label='OTFS — No interleaver')
+                'v-', color='#7f7f7f', lw=1.0, ms=4,
+                label='OTFS: No interleaver')
     ax.semilogy(p_arr, np.maximum(results['otfs_fixed'], 1e-8),
-                'D-', color='#ff7f0e', linewidth=2, markersize=8,
-                label='OTFS — Fixed Diversity')
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='OTFS: Fixed diversity')
     ax.semilogy(p_arr, np.maximum(results['otfs_adaptive'], 1e-8),
-                'o-', color='#1f77b4', linewidth=2.5, markersize=8,
-                label='OTFS — Adaptive Diversity')
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='OTFS: Adaptive diversity')
 
-    # OFDM curves (dashed lines)
     ax.semilogy(p_arr, np.maximum(results['ofdm_no_interleaver'], 1e-8),
-                'v--', color='#7f7f7f', linewidth=1.8, markersize=7,
-                alpha=0.7, label='OFDM — No interleaver')
+                'v--', color='#7f7f7f', lw=1.0, ms=4,
+                alpha=0.7, label='OFDM: No interleaver')
     ax.semilogy(p_arr, np.maximum(results['ofdm_fixed'], 1e-8),
-                'D--', color='#ff7f0e', linewidth=2, markersize=8,
-                alpha=0.7, label='OFDM — Fixed Diversity')
+                'D--', color='#ff7f0e', lw=1.2, ms=4,
+                alpha=0.7, label='OFDM: Fixed diversity')
     ax.semilogy(p_arr, np.maximum(results['ofdm_adaptive'], 1e-8),
-                'o--', color='#1f77b4', linewidth=2.5, markersize=8,
-                alpha=0.7, label='OFDM — Adaptive Diversity')
+                'o--', color='#1f77b4', lw=1.4, ms=4,
+                alpha=0.7, label='OFDM: Adaptive diversity')
 
-    ax.set_xlabel(r'Total Transmit Power, $P_{\mathrm{total}}$ (dBW)', fontsize=12)
-    ax.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax.set_title('OTFS vs OFDM: Diversity Transform Performance\n'
-                 f'(L={_L_TAPS} taps, {_n_s} subchannels, Polar SCL)',
-                 fontsize=13)
-    ax.legend(fontsize=9, loc='lower left', ncol=2)
-    ax.grid(True, which='both', linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Total transmit power $P_{\mathrm{total}}$ (dBW)')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=5.5, loc='lower left', ncol=2)
+    ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_ylim(5e-4, 2)
 
-    plt.tight_layout()
-    plt.savefig('otfs_vs_ofdm.png', dpi=300, bbox_inches='tight')
-    print("Saved: otfs_vs_ofdm.png")
-    plt.close()
+    save_figure(fig, 'otfs_vs_ofdm')
 
 
 def save_otfs_vs_ofdm_csv(results: Dict):
@@ -2347,36 +2287,30 @@ def simulate_bler_vs_n_subchannels(N: int = 256, K: int = 128,
 
 def plot_bler_vs_n_subchannels(results: Dict):
     """Plot BLER vs number of subchannels."""
-    fig, ax = plt.subplots(figsize=(9, 7))
+    ieee_setup()
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     ns = results['n_subchannels']
 
     ax.semilogy(ns, np.maximum(results['ppv_fixed'], 1e-8),
-                'p--', color='#17becf', linewidth=1.5, markersize=8,
-                label='PPV Bound (fixed)')
+                'p--', color='#17becf', lw=1.0, ms=4,
+                label='PPV bound (fixed)')
     ax.semilogy(ns, np.maximum(results['ppv_adaptive'], 1e-8),
-                's--', color='#2ca02c', linewidth=1.5, markersize=8,
-                label='PPV Bound (adaptive)')
+                's--', color='#2ca02c', lw=1.0, ms=4,
+                label='PPV bound (adaptive)')
     ax.semilogy(ns, np.maximum(results['fixed'], 1e-8),
-                'D-', color='#ff7f0e', linewidth=2, markersize=9,
-                label='Fixed Diversity Transform')
+                'D-', color='#ff7f0e', lw=1.2, ms=4,
+                label='Fixed diversity transform')
     ax.semilogy(ns, np.maximum(results['adaptive'], 1e-8),
-                'o-', color='#1f77b4', linewidth=2.5, markersize=9,
-                label='Adaptive Diversity Transform')
+                'o-', color='#1f77b4', lw=1.4, ms=4,
+                label='Adaptive diversity transform')
 
-    ax.set_xlabel('Number of Subchannels $n_s$', fontsize=12)
-    ax.set_ylabel('Block Error Rate (BLER)', fontsize=12)
-    ax.set_title('BLER vs Number of Subchannels\n'
-                 f'($P_{{\\mathrm{{total}}}}$=8 dBW, GF($2^3$), '
-                 f'$k_c = n_s - 2$)',
-                 fontsize=13)
-    ax.legend(fontsize=10, loc='upper right')
-    ax.grid(True, which='both', linestyle='--', alpha=0.7)
+    ax.set_xlabel(r'Number of subchannels $n_s$')
+    ax.set_ylabel('Block error rate (BLER)')
+    ax.legend(fontsize=7, loc='upper right')
+    ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_xticks(ns)
 
-    plt.tight_layout()
-    plt.savefig('bler_vs_n_subchannels.png', dpi=300, bbox_inches='tight')
-    print("Saved: bler_vs_n_subchannels.png")
-    plt.close()
+    save_figure(fig, 'bler_vs_n_subchannels')
 
 
 def save_bler_vs_n_subchannels_csv(results: Dict):

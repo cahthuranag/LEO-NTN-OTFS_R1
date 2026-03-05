@@ -20,7 +20,6 @@ def simulate(blocklengths=None, n_subchannels=N_S,
              P_total_dBW=8.0, ref_elevation_deg=50.0, n_mc=2000):
     if blocklengths is None:
         blocklengths = [64, 128, 256, 512, 1024]
-    rng = np.random.default_rng(2029)
 
     ref_slant = slant_range_m(ref_elevation_deg)
     ref_fspl = access_fspl_dB(ref_slant)
@@ -42,6 +41,11 @@ def simulate(blocklengths=None, n_subchannels=N_S,
     print(f"BLER vs Blocklength (P_total={P_total_dBW} dBW, MC={n_mc})")
 
     for idx, N in enumerate(blocklengths):
+        # Independent RNG per blocklength so all points see equivalent
+        # channel realizations regardless of how many random draws each
+        # blocklength consumes internally.
+        rng = np.random.default_rng(2029 + idx)
+
         K = N // 2
         R = K / N
         polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)

@@ -425,7 +425,8 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
             # QPSK soft demod using post-MMSE SNR (no extra noise)
             llr_bits = qpsk_soft_demod(rx_per_sub[j], snr_per_sub[j])
             llr_bits *= eta_j
-            llr_z[j * M_GF:(j + 1) * M_GF, :] = llr_bits.reshape(M_GF, n_pos)
+            n_needed = M_GF * n_pos
+            llr_z[j * M_GF:(j + 1) * M_GF, :] = llr_bits[:n_needed].reshape(M_GF, n_pos)
 
     # MAP soft diversity demapping (unchanged)
     is_fixed = (G_DIV is G_FIX) or np.array_equal(G_DIV, G_FIX)
