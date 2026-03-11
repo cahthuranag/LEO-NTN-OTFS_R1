@@ -380,16 +380,32 @@ def bler_no_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     return p_avg
 
 
+def _ppv_from_capacity_dispersion(C_eff: float, V_eff: float,
+                                   N: int, R: float) -> float:
+    """Compute PPV BLER directly from effective capacity and dispersion.
+
+    Uses the normal approximation (Theorem 1, eq. 15):
+      epsilon = Q( (sqrt(N)*(C_eff - R) + log2(N)/(2*sqrt(N))) / sqrt(V_eff) )
+    """
+    if V_eff <= 0 or N <= 0:
+        return 0.0 if C_eff >= R else 1.0
+    arg = (np.sqrt(N) * (C_eff - R)
+           + 0.5 * np.log2(N) / np.sqrt(N)) / np.sqrt(V_eff)
+    return float(q_function(arg))
+
+
 def bler_fixed_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
                          k_c: int, N: int, K: int) -> float:
     """
     Semi-analytical BLER with fixed diversity transform (G_FIX) — Section III.
 
     The MDS diversity transform allows recovery from up to (n_s - k_c) erased
-    subchannels. The effective SNR is the mean SNR of surviving (non-erased)
-    subchannels, since the decoder operates on the combined information from
-    surviving subchannels after MDS recovery.
+    subchannels. G_FIX distributes coded bits uniformly across subchannels,
+    so the effective capacity and dispersion are the unweighted means of the
+    per-subchannel values:
+        C_eff = mean_j C(gamma_j),   V_eff = mean_j V(gamma_j)
 
+    The PPV bound is then evaluated with these effective quantities.
     Returns 1.0 if fewer than k_c subchannels survive (unrecoverable).
 
     Args:
@@ -405,9 +421,12 @@ def bler_fixed_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     surviving = gamma_per_sub[~erased_mask]
     if len(surviving) < k_c:
         return 1.0
-    gamma_eff = float(np.mean(surviving))
     R = K / N
-    return conditional_bler(gamma_eff, N, R)
+    C_vals = np.array([capacity_awgn(g) for g in surviving])
+    V_vals = np.array([channel_dispersion(g) for g in surviving])
+    C_eff = float(np.mean(C_vals))
+    V_eff = float(np.mean(V_vals))
+    return _ppv_from_capacity_dispersion(C_eff, V_eff, N, R)
 
 
 def bler_adaptive_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
@@ -416,10 +435,17 @@ def bler_adaptive_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     """
     Semi-analytical BLER with adaptive diversity transform (Algorithm 2) — Section III.
 
-    Algorithm 2 selects a transform T that maximizes the quality metric
-    Q = sum_j eta_j * w_j, placing more coded bits on stronger subchannels.
-    The effective SNR is the quality-weighted mean of surviving subchannel SNRs,
-    reflecting the optimized bit-to-subchannel mapping.
+    Algorithm 2 selects T to maximise Q = sum_j eta_j * omega_j (eq. 28),
+    concentrating coded bits on reliable subchannels. The block weights omega_j
+    capture how many coded bits reside on each subchannel. The effective
+    capacity and dispersion are weighted accordingly:
+        C_eff = sum(omega_j * C(gamma_j)) / sum(omega_j)
+        V_eff = sum(omega_j * V(gamma_j)) / sum(omega_j)
+
+    Since the adaptive transform places higher omega_j on subchannels with
+    higher SNR (correlated via the quality metric), C_eff is pulled toward
+    the capacity of stronger subchannels, yielding a lower BLER than the
+    uniform-weight fixed transform.
 
     Returns 1.0 if fewer than k_c subchannels survive.
 
@@ -442,6 +468,9 @@ def bler_adaptive_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     w_sum = np.sum(w)
     if w_sum < 1e-10:
         return 1.0
-    gamma_eff = float(np.sum(w * g) / w_sum)
     R = K / N
-    return conditional_bler(gamma_eff, N, R)
+    C_vals = np.array([capacity_awgn(gi) for gi in g])
+    V_vals = np.array([channel_dispersion(gi) for gi in g])
+    C_eff = float(np.sum(w * C_vals) / w_sum)
+    V_eff = float(np.sum(w * V_vals) / w_sum)
+    return _ppv_from_capacity_dispersion(C_eff, V_eff, N, R)

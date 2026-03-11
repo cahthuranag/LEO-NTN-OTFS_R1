@@ -47,7 +47,7 @@ from channel import (
 from itertools import combinations
 from fbl_analysis import (
     finite_blocklength_bler, conditional_bler, capacity_awgn,
-    bler_no_diversity, bler_fixed_diversity, bler_adaptive_diversity,
+    bler_no_diversity, bler_fixed_diversity,
 )
 from polar_code import PolarCode
 from diversity_transform import (
@@ -310,6 +310,38 @@ def _power_to_link_snrs(P_total_dBW, access_fspl_dB, atm_loss_dB=0.0):
     return db_to_linear(gamma_gs_dB), db_to_linear(gamma_su_dB)
 
 
+def _subchannel_elevation_angles(ref_elevation_deg, n_subchannels, spread_deg=20.0):
+    """Generate per-subchannel elevation angles spread around the reference."""
+    offsets = np.linspace(-spread_deg / 2, spread_deg / 2, n_subchannels)
+    angles = ref_elevation_deg + offsets
+    return np.clip(angles, 10.0, 90.0)
+
+
+def _per_subchannel_link_snrs(P_total_dBW, elevation_angles_deg):
+    """Compute per-subchannel (gamma_gs, gamma_su) arrays from elevation angles."""
+    n = len(elevation_angles_deg)
+    gamma_gs_arr = np.zeros(n)
+    gamma_su_arr = np.zeros(n)
+    for j in range(n):
+        slant = _slant_range_m(elevation_angles_deg[j])
+        fspl = _access_fspl_dB(slant)
+        atm = _atmospheric_loss_dB(elevation_angles_deg[j])
+        gamma_gs_arr[j], gamma_su_arr[j] = _power_to_link_snrs(P_total_dBW, fspl, atm)
+    return gamma_gs_arr, gamma_su_arr
+
+
+def _per_subchannel_eta_ephemeris(elevation_angles_deg, P_total_dBW, K_rice_dB, R):
+    """Compute per-subchannel predicted eta from individual elevation angles."""
+    n = len(elevation_angles_deg)
+    eta = np.zeros(n)
+    for j in range(n):
+        predictor = _create_ephemeris_predictor(
+            elevation_angles_deg[j], P_total_dBW, K_rice_dB)
+        bler_eph = predictor.predict_subchannel_bler(elevation_angles_deg[j], R)
+        eta[j] = max(1.0 - bler_eph, 0.0)
+    return eta
+
+
 # ============================================================================
 #  Channel: multipath fading + MRC + cascaded SNR
 # ============================================================================
@@ -473,7 +505,8 @@ def _mmse_equalize_dd(y_dd, h_dd, noise_var):
 def _diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
                                                 h_dd, noise_var,
                                                 gamma_e2e_per_sub,
-                                                erased_mask, eta, rng):
+                                                erased_mask, eta, rng,
+                                                blocked_mask=None):
     """
     OTFS diversity transform with QPSK and post-MMSE SNR (paper-aligned).
 
@@ -509,6 +542,12 @@ def _diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
     rx_per_sub = _extract_from_dd(x_hat_dd, _SUBCHANNEL_MAP, n_sym_per_sub)
     snr_per_sub = _extract_snr_from_dd(snr_post, _SUBCHANNEL_MAP, n_sym_per_sub)
 
+    # Apply blockage: replace MMSE output on blocked subchannels
+    if blocked_mask is not None:
+        from sim_common import apply_blockage_post_mmse
+        apply_blockage_post_mmse(rx_per_sub, snr_per_sub, blocked_mask,
+                                 gamma_e2e_per_sub, qam_per_sub, _n_s, rng)
+
     if np.all(erased_mask):
         return None
 
@@ -542,7 +581,8 @@ def _diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
 
 
 def _standard_polar_otfs(info_bits, polar_code, h_dd, noise_var,
-                         gamma_e2e_per_sub, n_subchannels, perm, rng):
+                         gamma_e2e_per_sub, n_subchannels, perm, rng,
+                         blocked_mask=None):
     """Standard Polar over OTFS DD channel with QPSK and post-MMSE SNR."""
     N = polar_code.N
     N_D = _OTFS_PARAMS.N_D
@@ -582,6 +622,13 @@ def _standard_polar_otfs(info_bits, polar_code, h_dd, noise_var,
 
     rx_per_sub = _extract_from_dd(x_hat_dd, _SUBCHANNEL_MAP, n_sym_per_sub)
     snr_per_sub = _extract_snr_from_dd(snr_post, _SUBCHANNEL_MAP, n_sym_per_sub)
+
+    # Apply blockage: replace MMSE output on blocked subchannels
+    if blocked_mask is not None:
+        from sim_common import apply_blockage_post_mmse
+        apply_blockage_post_mmse(rx_per_sub, snr_per_sub, blocked_mask,
+                                 gamma_e2e_per_sub, qam_per_sub,
+                                 n_subchannels, rng)
 
     # QPSK soft demod using post-MMSE SNR (no double noise)
     llr_all = np.zeros(N)
@@ -801,11 +848,17 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     # Instantaneous eta is used for MAP scaling at the receiver.
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
-    best_Q = np.dot(_G_FIX_block_weights, eta_for_T)
+    # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
+    tau_safe = 0.9
+    safe_mask = eta_for_T > tau_safe
+    eta_safe = np.where(safe_mask, eta_for_T, 0.0)
+
+    # Algorithm 2: Q metric restricted to S_safe
+    best_Q = np.dot(_G_FIX_block_weights, eta_safe)
     best_G_DIV = _G_FIX
     best_block_weights = _G_FIX_block_weights.copy()
     for i in range(_N_POOL):
-        Q = np.dot(_block_weights_pool[i], eta_for_T)
+        Q = np.dot(_block_weights_pool[i], eta_safe)
         if Q > best_Q:
             best_Q = Q
             best_G_DIV = _G_DIV_POOL[i]
@@ -815,9 +868,10 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     ppv_no_div = bler_no_diversity(gamma_e2e, erased_mask, k_c, N, K)
     ppv_fix_div = bler_fixed_diversity(gamma_e2e, erased_mask, k_c, N, K)
 
-    # PPV adaptive: Q-metric scaling using ephemeris eta for Q_ratio
-    Q_fix_val = float(np.dot(_G_FIX_block_weights, eta_for_T))
-    Q_ratio = float(best_Q) / max(Q_fix_val, 1e-10)
+    # Adaptive PPV: scale fixed PPV by quality-metric ratio (Paper Eq. 28/Thm 4)
+    Q_fix_inst = float(np.dot(_G_FIX_block_weights, eta_inst))
+    Q_ada_inst = float(np.dot(best_block_weights, eta_inst))
+    Q_ratio = Q_ada_inst / max(Q_fix_inst, 1e-10)
     Q_ratio = max(Q_ratio, 1.0)
     ppv_ada_div = ppv_fix_div / Q_ratio
 
@@ -830,14 +884,16 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         # Curve 1: No interleaver through OTFS DD channel
         llr_1 = _standard_polar_otfs(
             info_bits, polar_code, h_dd, noise_var,
-            gamma_e2e, n_subchannels, perm=None, rng=rng)
+            gamma_e2e, n_subchannels, perm=None, rng=rng,
+            blocked_mask=blocked_mask)
         err_1 = polar_code.decode_check(info_bits, llr_1)
 
         # Curve 2: With random interleaver through OTFS DD channel
         perm = rng.permutation(N)
         llr_2 = _standard_polar_otfs(
             info_bits, polar_code, h_dd, noise_var,
-            gamma_e2e, n_subchannels, perm=perm, rng=rng)
+            gamma_e2e, n_subchannels, perm=perm, rng=rng,
+            blocked_mask=blocked_mask)
         err_2 = polar_code.decode_check(info_bits, llr_2)
 
         # Curve 3: Fixed diversity transform through OTFS
@@ -847,7 +903,8 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
             coded_bits = polar_code.encode(info_bits)
             llr_3 = _diversity_transform_transmit_receive_otfs(
                 coded_bits, _G_FIX, h_dd, noise_var,
-                gamma_e2e, erased_mask, eta_inst, rng)
+                gamma_e2e, erased_mask, eta_inst, rng,
+                blocked_mask=blocked_mask)
             if llr_3 is None:
                 err_3 = True
             else:
@@ -858,18 +915,11 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         if n_erased > max_erasures:
             err_4 = True
         else:
-            # Erasure-aware power allocation
-            n_surviving = n_subchannels - n_erased
-            power_alloc = np.ones(n_subchannels)
-            if n_surviving > 0 and n_erased > 0:
-                power_alloc[~erased_mask] = float(n_subchannels) / n_surviving
-                power_alloc[erased_mask] = 0.0
-            gamma_e2e_adaptive = gamma_e2e * power_alloc
-
             coded_bits_4 = polar_code.encode(info_bits)
             llr_4 = _diversity_transform_transmit_receive_otfs(
                 coded_bits_4, best_G_DIV, h_dd, noise_var,
-                gamma_e2e_adaptive, erased_mask, eta_inst, rng)
+                gamma_e2e, erased_mask, eta_inst, rng,
+                blocked_mask=blocked_mask)
             if llr_4 is None:
                 err_4 = True
             else:
@@ -918,16 +968,9 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         if n_erased > max_erasures:
             err_4 = True
         else:
-            n_surviving = n_subchannels - n_erased
-            power_alloc = np.ones(n_subchannels)
-            if n_surviving > 0 and n_erased > 0:
-                power_alloc[~erased_mask] = float(n_subchannels) / n_surviving
-                power_alloc[erased_mask] = 0.0
-            gamma_e2e_adaptive = gamma_e2e * power_alloc
-
             coded_bits_4 = polar_code.encode(info_bits)
             llr_4 = _diversity_transform_transmit_receive(
-                coded_bits_4, best_G_DIV, gamma_e2e_adaptive, erased_mask,
+                coded_bits_4, best_G_DIV, gamma_e2e, erased_mask,
                 eta_inst, rng)
             if llr_4 is None:
                 err_4 = True
@@ -966,10 +1009,8 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
     rng = np.random.default_rng(2026)
     power_dBW_arr = np.linspace(power_range_dBW[0], power_range_dBW[1], n_points)
 
-    # Access link geometry at reference elevation
-    ref_slant = _slant_range_m(ref_elevation_deg)
-    ref_fspl = _access_fspl_dB(ref_slant)
-    ref_atm_loss = _atmospheric_loss_dB(ref_elevation_deg)
+    # Per-subchannel elevation angles (fixed geometry, varies by subchannel)
+    elev_angles = _subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
 
     K_rice = 2.0                  # Rician K-factor (3 dB, NTN suburban)
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -990,13 +1031,12 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
           f"d={_D_FEEDER_M/1e3:.0f} km")
     print(f"  Access link: S-band {_F_ACCESS_HZ/1e9:.0f} GHz, "
           f"G_tx={_G_TX_SAT_DBI:.0f} dBi, G_rx={_G_RX_UE_DBI:.0f} dBi, "
-          f"elev={ref_elevation_deg:.0f}deg (d={ref_slant/1e3:.0f} km)")
-    print(f"  Atmospheric loss (Eq. 7): {ref_atm_loss:.2f} dB "
-          f"(gas+cloud/fog+rain at {ref_elevation_deg:.0f}deg)")
+          f"elev={ref_elevation_deg:.0f}deg (ref), "
+          f"subchannel spread ±10deg")
     print(f"  Multipath: L={_L_TAPS} taps, Rician K={K_rice_dB:.1f} dB")
     print(f"  Blockage: p_block={p_block_sub:.2f} per-subchannel, "
           f"loss={shadow_loss_dB} dB")
-    print(f"  Ephemeris eta: elevation-based T-selection (satellite side)")
+    print(f"  Ephemeris eta: per-subchannel elevation-based T-selection")
     print(f"  MC trials: {n_mc}")
     print()
 
@@ -1008,16 +1048,11 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
     R = K / N
 
     for idx, p_dBW in enumerate(power_dBW_arr):
-        gamma_gs, gamma_su = _power_to_link_snrs(p_dBW, ref_fspl, ref_atm_loss)
+        gamma_gs, gamma_su = _per_subchannel_link_snrs(p_dBW, elev_angles)
 
-        # Compute ephemeris eta (pre-transmission, satellite side)
-        # Uniform across subchannels since all share same elevation
-        predictor = _create_ephemeris_predictor(
-            ref_elevation_deg, p_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(
-            ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        # Compute per-subchannel ephemeris eta (pre-transmission, satellite side)
+        eta_ephemeris = _per_subchannel_eta_ephemeris(
+            elev_angles, p_dBW, K_rice_dB, R)
 
         ppv_no_acc = 0.0
         ppv_fix_acc = 0.0
@@ -1047,11 +1082,11 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
         results['fixed'][idx] = err_counts[2] / n_mc
         results['adaptive'][idx] = err_counts[3] / n_mc
 
-        gamma_su_dB = linear_to_db(gamma_su)
-        gamma_gs_dB = linear_to_db(gamma_gs)
+        gamma_su_dB = linear_to_db(np.mean(gamma_su))
+        gamma_gs_dB = linear_to_db(np.mean(gamma_gs))
         print(f"  P_total = {p_dBW:5.1f} dBW "
               f"(gamma_SU={gamma_su_dB:.1f}dB, gamma_GS={gamma_gs_dB:.1f}dB, "
-              f"eta_eph={eta_eph_scalar:.3f}): "
+              f"eta_eph_mean={np.mean(eta_ephemeris):.3f}): "
               f"NoIntlv={results['no_interleaver'][idx]:.4e}, "
               f"Intlv={results['interleaver'][idx]:.4e}, "
               f"Fixed={results['fixed'][idx]:.4e}, "
@@ -1113,25 +1148,19 @@ def simulate_bler_vs_elevation(N: int = 256, K: int = 128,
     R = K / N
 
     for idx, eps_deg in enumerate(elevations):
-        # Elevation-dependent access link geometry + atmospheric loss (Eq. 6-7)
-        d_access = _slant_range_m(eps_deg)
-        fspl_access = _access_fspl_dB(d_access)
-        atm_loss = _atmospheric_loss_dB(eps_deg)
-        gamma_gs, gamma_su = _power_to_link_snrs(P_total_dBW, fspl_access,
-                                                   atm_loss)
-        gamma_su_dB = linear_to_db(gamma_su)
+        # Per-subchannel elevation angles spread around the reference elevation
+        elev_angles = _subchannel_elevation_angles(eps_deg, n_subchannels)
+        gamma_gs, gamma_su = _per_subchannel_link_snrs(P_total_dBW, elev_angles)
+        gamma_su_dB = linear_to_db(np.mean(gamma_su))
 
         elev_frac = (eps_deg - elevation_range[0]) / (elevation_range[1] - elevation_range[0])
         K_rice = K_rice_min + (K_rice_max - K_rice_min) * elev_frac
         K_rice_dB = 10.0 * np.log10(K_rice)
         p_block_sub = p_block_sub_low + (p_block_sub_high - p_block_sub_low) * elev_frac
 
-        # Compute ephemeris eta for this elevation
-        predictor = _create_ephemeris_predictor(
-            eps_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(eps_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        # Compute per-subchannel ephemeris eta for this elevation
+        eta_ephemeris = _per_subchannel_eta_ephemeris(
+            elev_angles, P_total_dBW, K_rice_dB, R)
 
         ppv_no_acc = 0.0
         ppv_fix_acc = 0.0
@@ -1161,10 +1190,9 @@ def simulate_bler_vs_elevation(N: int = 256, K: int = 128,
         results['fixed'][idx] = err_counts[2] / n_mc
         results['adaptive'][idx] = err_counts[3] / n_mc
 
-        print(f"  Elev = {eps_deg:5.1f}deg (d={d_access/1e3:.0f}km, "
-              f"atm={atm_loss:.1f}dB, "
-              f"gamma_SU={gamma_su_dB:.1f}dB, K={K_rice_dB:.1f}dB, "
-              f"p_blk={p_block_sub:.2f}, eta_eph={eta_eph_scalar:.3f}): "
+        print(f"  Elev = {eps_deg:5.1f}deg "
+              f"(gamma_SU={gamma_su_dB:.1f}dB, K={K_rice_dB:.1f}dB, "
+              f"p_blk={p_block_sub:.2f}, eta_eph_mean={np.mean(eta_ephemeris):.3f}): "
               f"NoIntlv = {results['no_interleaver'][idx]:.4e}, "
               f"Intlv = {results['interleaver'][idx]:.4e}, "
               f"Fixed = {results['fixed'][idx]:.4e}, "
@@ -1601,10 +1629,8 @@ def simulate_bler_vs_blockage(N: int = 256, K: int = 128,
     rng = np.random.default_rng(2028)
     p_block_arr = np.linspace(p_block_range[0], p_block_range[1], n_points)
 
-    ref_slant = _slant_range_m(ref_elevation_deg)
-    ref_fspl = _access_fspl_dB(ref_slant)
-    ref_atm_loss = _atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = _power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
+    elev_angles = _subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
+    gamma_gs, gamma_su = _per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -1614,11 +1640,9 @@ def simulate_bler_vs_blockage(N: int = 256, K: int = 128,
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
     R = K / N
 
-    # Ephemeris eta (fixed for all blockage points)
-    predictor = _create_ephemeris_predictor(ref_elevation_deg, P_total_dBW, K_rice_dB)
-    bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-    eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-    eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+    # Per-subchannel ephemeris eta (fixed for all blockage points)
+    eta_ephemeris = _per_subchannel_eta_ephemeris(
+        elev_angles, P_total_dBW, K_rice_dB, R)
 
     print(f"\nComputing BLER vs Blockage Probability "
           f"(P_total={P_total_dBW} dBW, elev={ref_elevation_deg}deg)...")
@@ -1735,10 +1759,8 @@ def simulate_bler_vs_blocklength(blocklengths=None,
         blocklengths = [64, 128, 256, 512, 1024]
     rng = np.random.default_rng(2029)
 
-    ref_slant = _slant_range_m(ref_elevation_deg)
-    ref_fspl = _access_fspl_dB(ref_slant)
-    ref_atm_loss = _atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = _power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
+    elev_angles = _subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
+    gamma_gs, gamma_su = _per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -1761,12 +1783,9 @@ def simulate_bler_vs_blocklength(blocklengths=None,
         R = K / N
         polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-        # Ephemeris eta
-        predictor = _create_ephemeris_predictor(
-            ref_elevation_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        # Per-subchannel ephemeris eta (R changes per blocklength)
+        eta_ephemeris = _per_subchannel_eta_ephemeris(
+            elev_angles, P_total_dBW, K_rice_dB, R)
 
         ppv_acc = [0.0, 0.0, 0.0]
         err_counts = [0, 0, 0, 0]
@@ -1876,9 +1895,8 @@ def simulate_otfs_vs_ofdm(N: int = 256, K: int = 128,
     rng = np.random.default_rng(2030)
     power_arr = np.linspace(power_range_dBW[0], power_range_dBW[1], n_points)
 
-    ref_slant = _slant_range_m(ref_elevation_deg)
-    ref_fspl = _access_fspl_dB(ref_slant)
-    ref_atm_loss = _atmospheric_loss_dB(ref_elevation_deg)
+    # Per-subchannel elevation angles (fixed geometry)
+    elev_angles = _subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -1900,13 +1918,11 @@ def simulate_otfs_vs_ofdm(N: int = 256, K: int = 128,
             results[f'{prefix}_{key}'] = np.zeros(n_points)
 
     for idx, p_dBW in enumerate(power_arr):
-        gamma_gs, gamma_su = _power_to_link_snrs(p_dBW, ref_fspl, ref_atm_loss)
+        gamma_gs, gamma_su = _per_subchannel_link_snrs(p_dBW, elev_angles)
 
-        predictor = _create_ephemeris_predictor(
-            ref_elevation_deg, p_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        # Per-subchannel ephemeris eta
+        eta_ephemeris = _per_subchannel_eta_ephemeris(
+            elev_angles, p_dBW, K_rice_dB, R)
 
         for use_otfs, prefix in [(True, 'otfs'), (False, 'ofdm')]:
             err_counts = {k: 0 for k in curve_keys}
@@ -2029,12 +2045,17 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
 
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
-    # Algorithm 2 T-selection
-    best_Q = np.dot(G_FIX_block_weights, eta_for_T)
+    # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
+    tau_safe = 0.9
+    safe_mask = eta_for_T > tau_safe
+    eta_safe = np.where(safe_mask, eta_for_T, 0.0)
+
+    # Algorithm 2 T-selection (Q restricted to S_safe)
+    best_Q = np.dot(G_FIX_block_weights, eta_safe)
     best_G_DIV = G_FIX_local
     best_block_weights = G_FIX_block_weights.copy()
     for i in range(len(G_DIV_pool)):
-        Q = np.dot(block_weights_pool[i], eta_for_T)
+        Q = np.dot(block_weights_pool[i], eta_safe)
         if Q > best_Q:
             best_Q = Q
             best_G_DIV = G_DIV_pool[i]
@@ -2042,8 +2063,11 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
 
     # PPV bounds
     ppv_fix = bler_fixed_diversity(gamma_e2e, erased_mask, k_c, N, K)
-    Q_fix_val = float(np.dot(G_FIX_block_weights, eta_for_T))
-    Q_ratio = float(best_Q) / max(Q_fix_val, 1e-10)
+
+    # Adaptive PPV: scale fixed PPV by quality-metric ratio (Paper Eq. 28/Thm 4)
+    Q_fix_inst = float(np.dot(G_FIX_block_weights, eta_inst))
+    Q_ada_inst = float(np.dot(best_block_weights, eta_inst))
+    Q_ratio = Q_ada_inst / max(Q_fix_inst, 1e-10)
     Q_ratio = max(Q_ratio, 1.0)
     ppv_ada = ppv_fix / Q_ratio
 
@@ -2069,13 +2093,6 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
     if n_erased > max_erasures:
         err_ada = True
     else:
-        n_surviving = n_s - n_erased
-        power_alloc = np.ones(n_s)
-        if n_surviving > 0 and n_erased > 0:
-            power_alloc[~erased_mask] = float(n_s) / n_surviving
-            power_alloc[erased_mask] = 0.0
-        gamma_adaptive = gamma_e2e * power_alloc
-
         # Recompute S_ALL for best_G_DIV
         Z_ALL_ada = np.mod(best_G_DIV.T.astype(int) @ X_ALL_local.astype(int),
                            2).astype(np.int8)
@@ -2083,7 +2100,7 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
 
         coded_bits_4 = polar_code.encode(info_bits)
         llr_ada = _diversity_transform_transmit_receive_variable(
-            coded_bits_4, best_G_DIV, gamma_adaptive, erased_mask, eta_inst,
+            coded_bits_4, best_G_DIV, gamma_e2e, erased_mask, eta_inst,
             rng, n_s, m, rho, n_out,
             X_ALL_local, S_ALL_ada, X_MASK_0_local, X_MASK_1_local)
         if llr_ada is None:
@@ -2170,10 +2187,6 @@ def simulate_bler_vs_n_subchannels(N: int = 256, K: int = 128,
     m = 3  # GF(2^3) extension degree
 
     rng = np.random.default_rng(2031)
-    ref_slant = _slant_range_m(ref_elevation_deg)
-    ref_fspl = _access_fspl_dB(ref_slant)
-    ref_atm_loss = _atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = _power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -2241,12 +2254,11 @@ def simulate_bler_vs_n_subchannels(N: int = 256, K: int = 128,
         # Polar code
         polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-        # Ephemeris eta
-        predictor = _create_ephemeris_predictor(
-            ref_elevation_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_s_val, eta_eph_scalar)
+        # Per-subchannel ephemeris eta (n_s_val changes per iteration)
+        elev_angles_local = _subchannel_elevation_angles(ref_elevation_deg, n_s_val)
+        gamma_gs, gamma_su = _per_subchannel_link_snrs(P_total_dBW, elev_angles_local)
+        eta_ephemeris = _per_subchannel_eta_ephemeris(
+            elev_angles_local, P_total_dBW, K_rice_dB, R)
 
         ppv_fix_acc = 0.0
         ppv_ada_acc = 0.0

@@ -20,7 +20,7 @@ from channel import (
 )
 from fbl_analysis import (
     finite_blocklength_bler, conditional_bler, capacity_awgn,
-    bler_no_diversity, bler_fixed_diversity, bler_adaptive_diversity,
+    bler_no_diversity, bler_fixed_diversity,
 )
 from polar_code import PolarCode
 from diversity_transform import (
@@ -280,12 +280,56 @@ def power_to_link_snrs(P_total_dBW, access_fspl_dB_val, atm_loss_dB=0.0):
     return db_to_linear(gamma_gs_dB), db_to_linear(gamma_su_dB)
 
 
+def subchannel_elevation_angles(ref_elevation_deg, n_subchannels, spread_deg=50.0):
+    """Generate per-subchannel elevation angles for multi-satellite geometry.
+
+    Models n_subchannels satellites spread around the reference elevation,
+    reflecting the heterogeneous geometry of co-visible LEO satellites.
+    Spread is clipped to keep all angles in [10, 90] degrees.
+    """
+    offsets = np.linspace(-spread_deg / 2, spread_deg / 2, n_subchannels)
+    angles = ref_elevation_deg + offsets
+    return np.clip(angles, 10.0, 90.0)
+
+
+def per_subchannel_link_snrs(P_total_dBW, elevation_angles_deg):
+    """Compute per-subchannel (gamma_gs, gamma_su) arrays from elevation angles."""
+    n = len(elevation_angles_deg)
+    gamma_gs_arr = np.zeros(n)
+    gamma_su_arr = np.zeros(n)
+    for j in range(n):
+        slant = slant_range_m(elevation_angles_deg[j])
+        fspl = access_fspl_dB(slant)
+        atm = atmospheric_loss_dB(elevation_angles_deg[j])
+        gamma_gs_arr[j], gamma_su_arr[j] = power_to_link_snrs(
+            P_total_dBW, fspl, atm)
+    return gamma_gs_arr, gamma_su_arr
+
+
+def per_subchannel_eta_ephemeris(elevation_angles_deg, P_total_dBW,
+                                 K_rice_dB, R):
+    """Compute per-subchannel predicted eta from individual elevation angles."""
+    n = len(elevation_angles_deg)
+    eta = np.zeros(n)
+    for j in range(n):
+        predictor = create_ephemeris_predictor(
+            elevation_angles_deg[j], P_total_dBW, K_rice_dB)
+        bler = predictor.predict_subchannel_bler(elevation_angles_deg[j], R)
+        eta[j] = max(1.0 - bler, 0.0)
+    return eta
+
+
 # ============================================================================
 #  Channel models
 # ============================================================================
 
 def generate_multipath_per_subchannel(gamma_avg_SU, gamma_gs, n_subchannels,
                                       K_rice, p_block_sub, shadow_loss_dB, rng):
+    # gamma_avg_SU and gamma_gs can be scalar or per-subchannel arrays
+    gamma_su_arr = np.broadcast_to(np.asarray(gamma_avg_SU, dtype=float),
+                                   (n_subchannels,))
+    gamma_gs_arr = np.broadcast_to(np.asarray(gamma_gs, dtype=float),
+                                   (n_subchannels,))
     gamma_mrc = np.zeros(n_subchannels)
     for j in range(n_subchannels):
         fading_power = np.zeros(L_TAPS)
@@ -298,14 +342,14 @@ def generate_multipath_per_subchannel(gamma_avg_SU, gamma_gs, n_subchannels,
                 fading_power[p] = h_real**2 + h_imag**2
             else:
                 fading_power[p] = rng.exponential(1.0)
-        gamma_mrc[j] = gamma_avg_SU * np.sum(TAP_POWERS_LIN * fading_power)
+        gamma_mrc[j] = gamma_su_arr[j] * np.sum(TAP_POWERS_LIN * fading_power)
 
     blocked_mask = rng.random(n_subchannels) < p_block_sub
     if np.any(blocked_mask):
         shadow_linear = db_to_linear(-shadow_loss_dB)
         gamma_mrc[blocked_mask] *= shadow_linear
 
-    gamma_e2e = SNRCalculator.cascaded_snr(gamma_gs, gamma_mrc)
+    gamma_e2e = SNRCalculator.cascaded_snr(gamma_gs_arr, gamma_mrc)
     return gamma_e2e, blocked_mask
 
 
@@ -340,22 +384,55 @@ def generate_dd_channel(gamma_avg_SU, gamma_gs, n_subchannels, K_rice,
     h_dd = DDChannel.build_dd_kernel(
         tap_gains, tap_delays_bins, tap_dopplers_bins, N_D, M_D)
 
-    noise_var = 1.0 / (2.0 * max(gamma_avg_SU, 1e-10))
+    # gamma_avg_SU and gamma_gs can be scalar or per-subchannel arrays
+    gamma_su_arr = np.broadcast_to(np.asarray(gamma_avg_SU, dtype=float),
+                                   (n_subchannels,))
+    gamma_gs_arr = np.broadcast_to(np.asarray(gamma_gs, dtype=float),
+                                   (n_subchannels,))
+
+    # Noise variance uses mean access-link SNR (shared DD grid)
+    gamma_su_mean = float(np.mean(gamma_su_arr))
+    noise_var = 1.0 / (2.0 * max(gamma_su_mean, 1e-10))
 
     H_freq = np.fft.fft2(h_dd)
     gamma_mrc = np.zeros(n_subchannels)
     for j in range(n_subchannels):
         positions = SUBCHANNEL_MAP[j]
         h_vals = np.array([H_freq[d, l] for d, l in positions])
-        gamma_mrc[j] = gamma_avg_SU * np.mean(np.abs(h_vals)**2)
+        gamma_mrc[j] = gamma_su_arr[j] * np.mean(np.abs(h_vals)**2)
 
     blocked_mask = rng.random(n_subchannels) < p_block_sub
     if np.any(blocked_mask):
         shadow_linear = db_to_linear(-shadow_loss_dB)
         gamma_mrc[blocked_mask] *= shadow_linear
 
-    gamma_e2e = SNRCalculator.cascaded_snr(gamma_gs, gamma_mrc)
+    gamma_e2e = SNRCalculator.cascaded_snr(gamma_gs_arr, gamma_mrc)
     return h_dd, noise_var, gamma_e2e, blocked_mask
+
+
+def apply_blockage_post_mmse(rx_per_sub, snr_per_sub, blocked_mask,
+                             gamma_e2e_per_sub, qam_per_sub, n_subchannels,
+                             rng):
+    """Replace post-MMSE output on blocked subchannels with AWGN observation.
+
+    For blocked subchannels, the DD-domain h_dd does not reflect the blockage
+    shadow (only gamma_e2e does).  To inject the correct degradation into the
+    signal path we replace the MMSE-equalised symbols with a fresh observation
+    at the link-budget SNR gamma_e2e[j]:
+        y_j = x_j + n_j,   n_j ~ CN(0, 1/gamma_e2e[j])
+    This ensures the Polar decoder sees LLRs consistent with the actual
+    blocked-subchannel SNR.
+    """
+    for j in range(n_subchannels):
+        if blocked_mask[j]:
+            gamma_j = gamma_e2e_per_sub[j]
+            tx_syms = qam_per_sub[j]
+            n_syms = len(tx_syms)
+            noise_std = np.sqrt(0.5 / max(gamma_j, 1e-10))
+            noise = noise_std * (rng.normal(0, 1, n_syms)
+                                 + 1j * rng.normal(0, 1, n_syms))
+            rx_per_sub[j] = tx_syms + noise
+            snr_per_sub[j] = np.full(n_syms, gamma_j)
 
 
 def mmse_equalize_dd(y_dd, h_dd, noise_var):
@@ -375,7 +452,8 @@ def mmse_equalize_dd(y_dd, h_dd, noise_var):
 def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
                                               h_dd, noise_var,
                                               gamma_e2e_per_sub,
-                                              erased_mask, eta, rng):
+                                              erased_mask, eta, rng,
+                                              blocked_mask=None):
     """Diversity-transform OTFS path with QPSK and post-MMSE SNR.
 
     Signal chain (paper-aligned):
@@ -412,6 +490,11 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
     rx_per_sub = extract_from_dd(x_hat_dd, SUBCHANNEL_MAP, n_sym_per_sub)
     snr_per_sub = extract_snr_from_dd(snr_post, SUBCHANNEL_MAP, n_sym_per_sub)
 
+    # Apply blockage: replace MMSE output on blocked subchannels
+    if blocked_mask is not None:
+        apply_blockage_post_mmse(rx_per_sub, snr_per_sub, blocked_mask,
+                                 gamma_e2e_per_sub, qam_per_sub, N_S, rng)
+
     if np.all(erased_mask):
         return None
 
@@ -447,7 +530,8 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
 
 
 def standard_polar_otfs(info_bits, polar_code, h_dd, noise_var,
-                        gamma_e2e_per_sub, n_subchannels, perm, rng):
+                        gamma_e2e_per_sub, n_subchannels, perm, rng,
+                        blocked_mask=None):
     """Standard Polar over OTFS DD channel with QPSK modulation.
 
     Uses post-MMSE SNR for LLR computation — NO additional noise injection
@@ -493,6 +577,12 @@ def standard_polar_otfs(info_bits, polar_code, h_dd, noise_var,
     # Extract equalized symbols and per-position post-MMSE SNR
     rx_per_sub = extract_from_dd(x_hat_dd, SUBCHANNEL_MAP, n_sym_per_sub)
     snr_per_sub = extract_snr_from_dd(snr_post, SUBCHANNEL_MAP, n_sym_per_sub)
+
+    # Apply blockage: replace MMSE output on blocked subchannels
+    if blocked_mask is not None:
+        apply_blockage_post_mmse(rx_per_sub, snr_per_sub, blocked_mask,
+                                 gamma_e2e_per_sub, qam_per_sub,
+                                 n_subchannels, rng)
 
     # QPSK soft demod using post-MMSE SNR (single noise source)
     llr_all = np.zeros(N)
@@ -636,11 +726,17 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
 
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
-    best_Q = np.dot(G_FIX_BLOCK_WEIGHTS, eta_for_T)
+    # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
+    tau_safe = 0.9
+    safe_mask = eta_for_T > tau_safe
+
+    # Algorithm 2: Q metric restricted to S_safe (Paper Eq. quality_metric)
+    eta_safe = np.where(safe_mask, eta_for_T, 0.0)
+    best_Q = np.dot(G_FIX_BLOCK_WEIGHTS, eta_safe)
     best_G_DIV = G_FIX
     best_block_weights = G_FIX_BLOCK_WEIGHTS.copy()
     for i in range(N_POOL):
-        Q = np.dot(BLOCK_WEIGHTS_POOL[i], eta_for_T)
+        Q = np.dot(BLOCK_WEIGHTS_POOL[i], eta_safe)
         if Q > best_Q:
             best_Q = Q
             best_G_DIV = G_DIV_POOL[i]
@@ -650,8 +746,10 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     ppv_no_div = bler_no_diversity(gamma_e2e, erased_mask, k_c, N, K)
     ppv_fix_div = bler_fixed_diversity(gamma_e2e, erased_mask, k_c, N, K)
 
-    Q_fix_val = float(np.dot(G_FIX_BLOCK_WEIGHTS, eta_for_T))
-    Q_ratio = float(best_Q) / max(Q_fix_val, 1e-10)
+    # Adaptive PPV: scale fixed PPV by quality-metric ratio (Paper Eq. 28/Thm 4)
+    Q_fix_inst = float(np.dot(G_FIX_BLOCK_WEIGHTS, eta_inst))
+    Q_ada_inst = float(np.dot(best_block_weights, eta_inst))
+    Q_ratio = Q_ada_inst / max(Q_fix_inst, 1e-10)
     Q_ratio = max(Q_ratio, 1.0)
     ppv_ada_div = ppv_fix_div / Q_ratio
 
@@ -661,13 +759,15 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     if use_otfs:
         llr_1 = standard_polar_otfs(
             info_bits, polar_code, h_dd, noise_var,
-            gamma_e2e, n_subchannels, perm=None, rng=rng)
+            gamma_e2e, n_subchannels, perm=None, rng=rng,
+            blocked_mask=blocked_mask)
         err_1 = polar_code.decode_check(info_bits, llr_1)
 
         perm = rng.permutation(N)
         llr_2 = standard_polar_otfs(
             info_bits, polar_code, h_dd, noise_var,
-            gamma_e2e, n_subchannels, perm=perm, rng=rng)
+            gamma_e2e, n_subchannels, perm=perm, rng=rng,
+            blocked_mask=blocked_mask)
         err_2 = polar_code.decode_check(info_bits, llr_2)
 
         if n_erased > max_erasures:
@@ -676,7 +776,8 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
             coded_bits = polar_code.encode(info_bits)
             llr_3 = diversity_transform_transmit_receive_otfs(
                 coded_bits, G_FIX, h_dd, noise_var,
-                gamma_e2e, erased_mask, eta_inst, rng)
+                gamma_e2e, erased_mask, eta_inst, rng,
+                blocked_mask=blocked_mask)
             if llr_3 is None:
                 err_3 = True
             else:
@@ -686,17 +787,11 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         if n_erased > max_erasures:
             err_4 = True
         else:
-            n_surviving = n_subchannels - n_erased
-            power_alloc = np.ones(n_subchannels)
-            if n_surviving > 0 and n_erased > 0:
-                power_alloc[~erased_mask] = float(n_subchannels) / n_surviving
-                power_alloc[erased_mask] = 0.0
-            gamma_e2e_adaptive = gamma_e2e * power_alloc
-
             coded_bits_4 = polar_code.encode(info_bits)
             llr_4 = diversity_transform_transmit_receive_otfs(
                 coded_bits_4, best_G_DIV, h_dd, noise_var,
-                gamma_e2e_adaptive, erased_mask, eta_inst, rng)
+                gamma_e2e, erased_mask, eta_inst, rng,
+                blocked_mask=blocked_mask)
             if llr_4 is None:
                 err_4 = True
             else:
@@ -738,16 +833,9 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         if n_erased > max_erasures:
             err_4 = True
         else:
-            n_surviving = n_subchannels - n_erased
-            power_alloc = np.ones(n_subchannels)
-            if n_surviving > 0 and n_erased > 0:
-                power_alloc[~erased_mask] = float(n_subchannels) / n_surviving
-                power_alloc[erased_mask] = 0.0
-            gamma_e2e_adaptive = gamma_e2e * power_alloc
-
             coded_bits_4 = polar_code.encode(info_bits)
             llr_4 = diversity_transform_transmit_receive(
-                coded_bits_4, best_G_DIV, gamma_e2e_adaptive, erased_mask,
+                coded_bits_4, best_G_DIV, gamma_e2e, erased_mask,
                 eta_inst, rng)
             if llr_4 is None:
                 err_4 = True
@@ -843,17 +931,28 @@ def mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
 
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
-    best_Q = np.dot(G_FIX_block_weights_local, eta_for_T)
+    # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
+    tau_safe = 0.9
+    safe_mask = eta_for_T > tau_safe
+    eta_safe = np.where(safe_mask, eta_for_T, 0.0)
+
+    # Algorithm 2: Q metric restricted to S_safe
+    best_Q = np.dot(G_FIX_block_weights_local, eta_safe)
     best_G_DIV = G_FIX_local
+    best_block_weights = G_FIX_block_weights_local.copy()
     for i in range(len(G_DIV_pool)):
-        Q = np.dot(block_weights_pool[i], eta_for_T)
+        Q = np.dot(block_weights_pool[i], eta_safe)
         if Q > best_Q:
             best_Q = Q
             best_G_DIV = G_DIV_pool[i]
+            best_block_weights = block_weights_pool[i].copy()
 
     ppv_fix = bler_fixed_diversity(gamma_e2e, erased_mask, k_c, N, K)
-    Q_fix_val = float(np.dot(G_FIX_block_weights_local, eta_for_T))
-    Q_ratio = float(best_Q) / max(Q_fix_val, 1e-10)
+
+    # Adaptive PPV: scale fixed PPV by quality-metric ratio (Paper Eq. 28/Thm 4)
+    Q_fix_inst = float(np.dot(G_FIX_block_weights_local, eta_inst))
+    Q_ada_inst = float(np.dot(best_block_weights, eta_inst))
+    Q_ratio = Q_ada_inst / max(Q_fix_inst, 1e-10)
     Q_ratio = max(Q_ratio, 1.0)
     ppv_ada = ppv_fix / Q_ratio
 
@@ -876,20 +975,13 @@ def mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
     if n_erased > max_erasures:
         err_ada = True
     else:
-        n_surviving = n_s - n_erased
-        power_alloc = np.ones(n_s)
-        if n_surviving > 0 and n_erased > 0:
-            power_alloc[~erased_mask] = float(n_s) / n_surviving
-            power_alloc[erased_mask] = 0.0
-        gamma_adaptive = gamma_e2e * power_alloc
-
         Z_ALL_ada = np.mod(best_G_DIV.T.astype(int) @ X_ALL_local.astype(int),
                            2).astype(np.int8)
         S_ALL_ada = 1.0 - 2.0 * Z_ALL_ada.astype(np.float64)
 
         coded_bits_4 = polar_code.encode(info_bits)
         llr_ada = diversity_transform_transmit_receive_variable(
-            coded_bits_4, best_G_DIV, gamma_adaptive, erased_mask, eta_inst,
+            coded_bits_4, best_G_DIV, gamma_e2e, erased_mask, eta_inst,
             rng, n_s, m, rho, n_out,
             X_ALL_local, S_ALL_ada, X_MASK_0_local, X_MASK_1_local)
         if llr_ada is None:

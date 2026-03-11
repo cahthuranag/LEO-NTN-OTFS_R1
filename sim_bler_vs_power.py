@@ -10,6 +10,8 @@ from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS, OTFS_PARAMS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
     create_ephemeris_predictor, mc_trial_one_snr,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     db_to_linear, linear_to_db, ALPHA_POWER,
     F_FEEDER_HZ, G_TX_GW_DBI, G_RX_SAT_DBI, D_FEEDER_M,
     F_ACCESS_HZ, G_TX_SAT_DBI, G_RX_UE_DBI,
@@ -24,9 +26,8 @@ def simulate(N=256, K=128, n_subchannels=N_S,
     rng = np.random.default_rng(2026)
     power_dBW_arr = np.linspace(power_range_dBW[0], power_range_dBW[1], n_points)
 
-    ref_slant = slant_range_m(ref_elevation_deg)
-    ref_fspl = access_fspl_dB(ref_slant)
-    ref_atm_loss = atmospheric_loss_dB(ref_elevation_deg)
+    # Per-subchannel elevation angles (multi-satellite geometry)
+    elev_angles = subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -38,6 +39,7 @@ def simulate(N=256, K=128, n_subchannels=N_S,
 
     print(f"BLER vs P_total (7 curves, OTFS DD-domain MC)")
     print(f"  Polar({N},{K}), Rate={K/N:.2f}, MC={n_mc}")
+    print(f"  Elevation angles: {elev_angles}")
 
     results = {key: np.zeros(n_points) for key in [
         'ppv_no_diversity', 'ppv_fixed_diversity', 'ppv_adaptive_diversity',
@@ -46,12 +48,12 @@ def simulate(N=256, K=128, n_subchannels=N_S,
 
     R = K / N
     for idx, p_dBW in enumerate(power_dBW_arr):
-        gamma_gs, gamma_su = power_to_link_snrs(p_dBW, ref_fspl, ref_atm_loss)
+        # Per-subchannel link SNRs from individual elevation angles
+        gamma_gs, gamma_su = per_subchannel_link_snrs(p_dBW, elev_angles)
 
-        predictor = create_ephemeris_predictor(ref_elevation_deg, p_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        # Per-subchannel predicted eta (heterogeneous)
+        eta_ephemeris = per_subchannel_eta_ephemeris(
+            elev_angles, p_dBW, K_rice_dB, R)
 
         ppv_no_acc, ppv_fix_acc, ppv_ada_acc = 0.0, 0.0, 0.0
         err_counts = [0, 0, 0, 0]
@@ -90,25 +92,25 @@ def plot(results):
 
     ax.semilogy(p, np.maximum(results['ppv_no_diversity'], 1e-8),
                 'h--', color='#9467bd', lw=0.8, ms=3,
-                label='PPV bound (no diversity)')
+                label=r'PPV bound (no diversity)')
     ax.semilogy(p, np.maximum(results['ppv_fixed_diversity'], 1e-8),
                 'p--', color='#17becf', lw=0.8, ms=3,
-                label='PPV bound (fixed diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{FIX}}$)')
     ax.semilogy(p, np.maximum(results['ppv_adaptive_diversity'], 1e-8),
                 's--', color='#2ca02c', lw=0.8, ms=3,
-                label='PPV bound (adaptive diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}^{\star}$)')
     ax.semilogy(p, np.maximum(results['no_interleaver'], 1e-8),
                 'v-', color='#7f7f7f', lw=1.0, ms=4,
-                label='Standard Polar (no interleaver)')
+                label=r'Polar (no interleaver)')
     ax.semilogy(p, np.maximum(results['interleaver'], 1e-8),
                 '^-', color='#d62728', lw=1.0, ms=4,
-                label='Standard Polar + interleaver')
+                label=r'Polar + interleaver')
     ax.semilogy(p, np.maximum(results['fixed'], 1e-8),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                label='Fixed diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
     ax.semilogy(p, np.maximum(results['adaptive'], 1e-8),
                 'o-', color='#1f77b4', lw=1.4, ms=4,
-                label='Adaptive diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
 
     fixed_clip = np.maximum(results['fixed'], 1e-8)
     adapt_clip = np.maximum(results['adaptive'], 1e-8)

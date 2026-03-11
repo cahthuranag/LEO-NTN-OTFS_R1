@@ -9,6 +9,8 @@ from typing import Dict, Tuple
 from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS, OTFS_PARAMS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     create_ephemeris_predictor, mc_trial_one_snr,
     db_to_linear, linear_to_db, ALPHA_POWER,
 )
@@ -40,20 +42,15 @@ def simulate(N=256, K=128, n_subchannels=N_S,
 
     R = K / N
     for idx, eps_deg in enumerate(elevations):
-        d_access = slant_range_m(eps_deg)
-        fspl_access = access_fspl_dB(d_access)
-        atm_loss = atmospheric_loss_dB(eps_deg)
-        gamma_gs, gamma_su = power_to_link_snrs(P_total_dBW, fspl_access, atm_loss)
+        elev_angles = subchannel_elevation_angles(eps_deg, n_subchannels)
+        gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
         elev_frac = (eps_deg - elevation_range[0]) / (elevation_range[1] - elevation_range[0])
         K_rice = K_rice_min + (K_rice_max - K_rice_min) * elev_frac
         K_rice_dB = 10.0 * np.log10(K_rice)
         p_block_sub = p_block_sub_low + (p_block_sub_high - p_block_sub_low) * elev_frac
 
-        predictor = create_ephemeris_predictor(eps_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(eps_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
 
         ppv_no_acc, ppv_fix_acc, ppv_ada_acc = 0.0, 0.0, 0.0
         err_counts = [0, 0, 0, 0]
@@ -92,25 +89,25 @@ def plot(results):
 
     ax.semilogy(elev, np.maximum(results['ppv_no_diversity'], 1e-7),
                 'h--', color='#9467bd', lw=0.8, ms=3,
-                label='PPV bound (no diversity)')
+                label=r'PPV bound (no diversity)')
     ax.semilogy(elev, np.maximum(results['ppv_fixed_diversity'], 1e-7),
                 'p--', color='#17becf', lw=0.8, ms=3,
-                label='PPV bound (fixed diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{FIX}}$)')
     ax.semilogy(elev, np.maximum(results['ppv_adaptive_diversity'], 1e-7),
                 's--', color='#2ca02c', lw=0.8, ms=3,
-                label='PPV bound (adaptive diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}^{\star}$)')
     ax.semilogy(elev, np.maximum(results['no_interleaver'], 1e-7),
                 'v-', color='#7f7f7f', lw=1.0, ms=4,
-                label='Standard Polar (no interleaver)')
+                label=r'Polar (no interleaver)')
     ax.semilogy(elev, np.maximum(results['interleaver'], 1e-7),
                 '^-', color='#d62728', lw=1.0, ms=4,
-                label='Standard Polar + interleaver')
+                label=r'Polar + interleaver')
     ax.semilogy(elev, np.maximum(results['fixed'], 1e-7),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                label='Fixed diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
     ax.semilogy(elev, np.maximum(results['adaptive'], 1e-7),
                 'o-', color='#1f77b4', lw=1.4, ms=4,
-                label='Adaptive diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
 
     fixed_clip = np.maximum(results['fixed'], 1e-7)
     adapt_clip = np.maximum(results['adaptive'], 1e-7)

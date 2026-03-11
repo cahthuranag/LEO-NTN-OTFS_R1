@@ -611,7 +611,7 @@ class EphemerisPredictor:
         self,
         epsilon_deg: float,
         R_c: float,
-        use_high_snr_approx: bool = True,
+        use_high_snr_approx: bool = False,
         rng: np.random.Generator = None,
     ) -> float:
         """
@@ -622,11 +622,10 @@ class EphemerisPredictor:
         epsilon_rad = np.radians(epsilon_deg)
         wavelength = SPEED_OF_LIGHT / self.access.f_c_Hz
 
-        # Access-link slant range and path loss
+        # Access-link slant range and path loss (deterministic — no blockage)
         d_SU = self.path_loss.slant_range(epsilon_rad, self.orbital.h_orb)
-        PL_SU = self.path_loss.total_path_loss_dB(
-            d_SU, wavelength, self.access.f_c_Hz, epsilon_rad, epsilon_deg, rng
-        )
+        PL_SU = (self.path_loss.fspl_dB(d_SU, wavelength)
+                 + self.path_loss.atmospheric_loss_dB(self.access.f_c_Hz, epsilon_rad))
         G_LS_SU = self.path_loss.large_scale_gain_linear(PL_SU)
 
         # Feeder-link (assume near-zenith, high gain, ~deterministic)

@@ -9,6 +9,8 @@ from typing import Dict
 from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, M_GF, OTFS_PARAMS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     create_ephemeris_predictor, mc_trial_variable_ns,
     build_subchannel_map,
     db_to_linear, linear_to_db,
@@ -19,16 +21,12 @@ from diversity_transform import DiversityTransformConfig
 
 
 def simulate(N=256, K=128, ns_values=None,
-             P_total_dBW=8.0, ref_elevation_deg=50.0, n_mc=1500):
+             P_total_dBW=3.0, ref_elevation_deg=50.0, n_mc=1500):
     if ns_values is None:
-        ns_values = [2, 3, 4, 5, 6, 7]
+        ns_values = [3, 4, 5, 6, 7]
     m = 3
 
     rng = np.random.default_rng(2031)
-    ref_slant = slant_range_m(ref_elevation_deg)
-    ref_fspl = access_fspl_dB(ref_slant)
-    ref_atm_loss = atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -45,7 +43,7 @@ def simulate(N=256, K=128, ns_values=None,
     print(f"BLER vs n_subchannels (P_total={P_total_dBW} dBW, MC={n_mc})")
 
     for idx, n_s_val in enumerate(ns_values):
-        k_c_val = max(n_s_val - 2, 1)
+        k_c_val = 2
         if k_c_val >= n_s_val:
             k_c_val = n_s_val - 1
 
@@ -89,10 +87,9 @@ def simulate(N=256, K=128, ns_values=None,
 
         polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-        predictor = create_ephemeris_predictor(ref_elevation_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_s_val, eta_eph_scalar)
+        elev_angles = subchannel_elevation_angles(ref_elevation_deg, n_s_val)
+        gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
+        eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
 
         ppv_fix_acc, ppv_ada_acc = 0.0, 0.0
         err_fix_count, err_ada_count = 0, 0

@@ -20,6 +20,8 @@ from typing import Dict, Tuple
 from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS, OTFS_PARAMS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     create_ephemeris_predictor, mc_trial_one_snr,
     generate_multipath_per_subchannel, generate_dd_channel,
     diversity_transform_transmit_receive, diversity_transform_transmit_receive_otfs,
@@ -100,11 +102,14 @@ def _mc_trial_otfs_ofdm(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
 
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst_otfs
 
-    # --- Algorithm 2 T-selection ---
-    best_Q = np.dot(G_FIX_BLOCK_WEIGHTS, eta_for_T)
+    # --- Algorithm 2 T-selection (Q restricted to S_safe) ---
+    tau_safe = 0.9
+    safe_mask = eta_for_T > tau_safe
+    eta_safe = np.where(safe_mask, eta_for_T, 0.0)
+    best_Q = np.dot(G_FIX_BLOCK_WEIGHTS, eta_safe)
     best_G_DIV = G_FIX
     for i in range(N_POOL):
-        Q = np.dot(BLOCK_WEIGHTS_POOL[i], eta_for_T)
+        Q = np.dot(BLOCK_WEIGHTS_POOL[i], eta_safe)
         if Q > best_Q:
             best_Q = Q
             best_G_DIV = G_DIV_POOL[i]
@@ -121,7 +126,8 @@ def _mc_trial_otfs_ofdm(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
         coded_bits = polar_code.encode(info_bits)
         llr_otfs_fix = diversity_transform_transmit_receive_otfs(
             coded_bits, G_FIX, h_dd, noise_var,
-            gamma_e2e_otfs_dd, erased_mask_otfs, eta_inst_otfs, rng)
+            gamma_e2e_otfs_dd, erased_mask_otfs, eta_inst_otfs, rng,
+            blocked_mask=blocked_mask_otfs)
         if llr_otfs_fix is None:
             err_otfs_fix = True
         else:
@@ -131,17 +137,11 @@ def _mc_trial_otfs_ofdm(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     if n_erased_otfs > max_erasures:
         err_otfs_ada = True
     else:
-        n_surviving = n_subchannels - n_erased_otfs
-        power_alloc = np.ones(n_subchannels)
-        if n_surviving > 0 and n_erased_otfs > 0:
-            power_alloc[~erased_mask_otfs] = float(n_subchannels) / n_surviving
-            power_alloc[erased_mask_otfs] = 0.0
-        gamma_otfs_ada = gamma_e2e_otfs_dd * power_alloc
-
         coded_bits_ada = polar_code.encode(info_bits)
         llr_otfs_ada = diversity_transform_transmit_receive_otfs(
             coded_bits_ada, best_G_DIV, h_dd, noise_var,
-            gamma_otfs_ada, erased_mask_otfs, eta_inst_otfs, rng)
+            gamma_e2e_otfs_dd, erased_mask_otfs, eta_inst_otfs, rng,
+            blocked_mask=blocked_mask_otfs)
         if llr_otfs_ada is None:
             err_otfs_ada = True
         else:
@@ -166,16 +166,9 @@ def _mc_trial_otfs_ofdm(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     if n_erased_ofdm > max_erasures:
         err_ofdm_ada = True
     else:
-        n_surviving_ofdm = n_subchannels - n_erased_ofdm
-        power_alloc_ofdm = np.ones(n_subchannels)
-        if n_surviving_ofdm > 0 and n_erased_ofdm > 0:
-            power_alloc_ofdm[~erased_mask_ofdm] = float(n_subchannels) / n_surviving_ofdm
-            power_alloc_ofdm[erased_mask_ofdm] = 0.0
-        gamma_ofdm_ada = gamma_e2e_ofdm * power_alloc_ofdm
-
         coded_bits_ofdm_ada = polar_code.encode(info_bits)
         llr_ofdm_ada = diversity_transform_transmit_receive(
-            coded_bits_ofdm_ada, best_G_DIV, gamma_ofdm_ada,
+            coded_bits_ofdm_ada, best_G_DIV, gamma_e2e_ofdm,
             erased_mask_ofdm, eta_inst_ofdm, rng)
         if llr_ofdm_ada is None:
             err_ofdm_ada = True
@@ -202,10 +195,8 @@ def simulate(N=256, K=128, n_subchannels=N_S,
     rng = np.random.default_rng(2030)
     f_D_arr = np.linspace(f_D_norm_range[0], f_D_norm_range[1], n_points)
 
-    ref_slant = slant_range_m(ref_elevation_deg)
-    ref_fspl = access_fspl_dB(ref_slant)
-    ref_atm_loss = atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
+    elev_angles = subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
+    gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -216,10 +207,7 @@ def simulate(N=256, K=128, n_subchannels=N_S,
 
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-    predictor = create_ephemeris_predictor(ref_elevation_deg, P_total_dBW, K_rice_dB)
-    bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-    eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-    eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+    eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
 
     print(f"OTFS vs OFDM: BLER vs Normalized Doppler")
     print(f"  P_total={P_total_dBW} dBW, elev={ref_elevation_deg}deg, MC={n_mc}")

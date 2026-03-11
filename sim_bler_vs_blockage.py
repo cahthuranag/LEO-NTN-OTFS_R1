@@ -9,6 +9,8 @@ from typing import Dict, Tuple
 from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     create_ephemeris_predictor, mc_trial_one_snr,
     db_to_linear, linear_to_db,
 )
@@ -18,14 +20,12 @@ from polar_code import PolarCode
 def simulate(N=256, K=128, n_subchannels=N_S,
              max_erasures=DT_CONFIG.max_erasures,
              P_total_dBW=8.0, ref_elevation_deg=50.0,
-             p_block_range=(0.0, 0.35), n_points=8, n_mc=2000):
+             p_block_range=(0.001, 0.35), n_points=8, n_mc=2000):
     rng = np.random.default_rng(2028)
     p_block_arr = np.linspace(p_block_range[0], p_block_range[1], n_points)
 
-    ref_slant = slant_range_m(ref_elevation_deg)
-    ref_fspl = access_fspl_dB(ref_slant)
-    ref_atm_loss = atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
+    elev_angles = subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
+    gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
@@ -35,10 +35,7 @@ def simulate(N=256, K=128, n_subchannels=N_S,
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
     R = K / N
 
-    predictor = create_ephemeris_predictor(ref_elevation_deg, P_total_dBW, K_rice_dB)
-    bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-    eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-    eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+    eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
 
     print(f"BLER vs Blockage (P_total={P_total_dBW} dBW, MC={n_mc})")
 
@@ -82,16 +79,16 @@ def plot(results):
 
     ax.semilogy(p_blk, np.maximum(results['no_interleaver'], 1e-8),
                 'v-', color='#7f7f7f', lw=1.0, ms=4,
-                label='Standard Polar (no interleaver)')
+                label=r'Polar (no interleaver)')
     ax.semilogy(p_blk, np.maximum(results['interleaver'], 1e-8),
                 '^-', color='#d62728', lw=1.0, ms=4,
-                label='Standard Polar + interleaver')
+                label=r'Polar + interleaver')
     ax.semilogy(p_blk, np.maximum(results['fixed'], 1e-8),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                label='Fixed diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
     ax.semilogy(p_blk, np.maximum(results['adaptive'], 1e-8),
                 'o-', color='#1f77b4', lw=1.4, ms=4,
-                label='Adaptive diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
 
     fixed_clip = np.maximum(results['fixed'], 1e-8)
     adapt_clip = np.maximum(results['adaptive'], 1e-8)

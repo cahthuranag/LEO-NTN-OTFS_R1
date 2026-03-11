@@ -9,28 +9,27 @@ from typing import Dict
 from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
+    subchannel_elevation_angles, per_subchannel_link_snrs,
+    per_subchannel_eta_ephemeris,
     create_ephemeris_predictor, mc_trial_one_snr,
     db_to_linear, linear_to_db,
 )
 from polar_code import PolarCode
 
 
-def simulate(blocklengths=None, n_subchannels=N_S,
+def simulate(K=32, blocklengths=None, n_subchannels=N_S,
              max_erasures=DT_CONFIG.max_erasures,
-             P_total_dBW=8.0, ref_elevation_deg=50.0, n_mc=2000):
+             P_total_dBW=4.0, ref_elevation_deg=50.0, n_mc=2000,
+             p_block_sub=0.15, shadow_loss_dB=30.0):
     if blocklengths is None:
-        blocklengths = [64, 128, 256, 512, 1024]
+        blocklengths = [32, 64, 128, 256]
 
-    ref_slant = slant_range_m(ref_elevation_deg)
-    ref_fspl = access_fspl_dB(ref_slant)
-    ref_atm_loss = atmospheric_loss_dB(ref_elevation_deg)
-    gamma_gs, gamma_su = power_to_link_snrs(P_total_dBW, ref_fspl, ref_atm_loss)
+    elev_angles = subchannel_elevation_angles(ref_elevation_deg, n_subchannels)
+    gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
     erasure_threshold = db_to_linear(-3.0)
-    shadow_loss_dB = 20.0
-    p_block_sub = 0.15
 
     n_pts = len(blocklengths)
     results = {key: np.zeros(n_pts) for key in [
@@ -38,7 +37,7 @@ def simulate(blocklengths=None, n_subchannels=N_S,
         'no_interleaver', 'interleaver', 'fixed', 'adaptive']}
     results['blocklength'] = np.array(blocklengths)
 
-    print(f"BLER vs Blocklength (P_total={P_total_dBW} dBW, MC={n_mc})")
+    print(f"BLER vs Blocklength (K={K} fixed, P_total={P_total_dBW} dBW, MC={n_mc})")
 
     for idx, N in enumerate(blocklengths):
         # Independent RNG per blocklength so all points see equivalent
@@ -46,14 +45,10 @@ def simulate(blocklengths=None, n_subchannels=N_S,
         # blocklength consumes internally.
         rng = np.random.default_rng(2029 + idx)
 
-        K = N // 2
         R = K / N
         polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-        predictor = create_ephemeris_predictor(ref_elevation_deg, P_total_dBW, K_rice_dB)
-        bler_eph = predictor.predict_subchannel_bler(ref_elevation_deg, R)
-        eta_eph_scalar = max(1.0 - bler_eph, 0.0)
-        eta_ephemeris = np.full(n_subchannels, eta_eph_scalar)
+        eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
 
         ppv_acc = [0.0, 0.0, 0.0]
         err_counts = [0, 0, 0, 0]
@@ -90,29 +85,29 @@ def plot(results):
 
     ax.semilogy(bl, np.maximum(results['ppv_no_diversity'], 1e-8),
                 'h--', color='#9467bd', lw=0.8, ms=3,
-                label='PPV bound (no diversity)')
+                label=r'PPV bound (no diversity)')
     ax.semilogy(bl, np.maximum(results['ppv_fixed_diversity'], 1e-8),
                 'p--', color='#17becf', lw=0.8, ms=3,
-                label='PPV bound (fixed diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{FIX}}$)')
     ax.semilogy(bl, np.maximum(results['ppv_adaptive_diversity'], 1e-8),
                 's--', color='#2ca02c', lw=0.8, ms=3,
-                label='PPV bound (adaptive diversity)')
+                label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}^{\star}$)')
     ax.semilogy(bl, np.maximum(results['no_interleaver'], 1e-8),
                 'v-', color='#7f7f7f', lw=1.0, ms=4,
-                label='Standard Polar (no interleaver)')
+                label=r'Polar (no interleaver)')
     ax.semilogy(bl, np.maximum(results['interleaver'], 1e-8),
                 '^-', color='#d62728', lw=1.0, ms=4,
-                label='Standard Polar + interleaver')
+                label=r'Polar + interleaver')
     ax.semilogy(bl, np.maximum(results['fixed'], 1e-8),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                label='Fixed diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
     ax.semilogy(bl, np.maximum(results['adaptive'], 1e-8),
                 'o-', color='#1f77b4', lw=1.4, ms=4,
-                label='Adaptive diversity transform')
+                label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
 
-    ax.set_xlabel(r'Blocklength $n_c$')
+    ax.set_xlabel(r'Blocklength $N$')
     ax.set_ylabel('Block error rate (BLER)')
-    ax.legend(fontsize=6, loc='upper right', framealpha=0.9)
+    ax.legend(fontsize=5.5, loc='upper right', framealpha=0.9)
     ax.grid(True, which='both', ls='--', alpha=0.3)
     ax.set_xscale('log', base=2)
     ax.set_xticks(results['blocklength'])

@@ -57,22 +57,22 @@ def plot(throughput):
             label=r'AWGN capacity $C(\bar{\gamma})$')
     ax.plot(p_arr, throughput['ppv_adaptive_diversity'],
             's--', color='#2ca02c', lw=0.7, ms=3,
-            label='PPV bound (adaptive)')
+            label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}^{\star}$)')
     ax.plot(p_arr, throughput['ppv_fixed_diversity'],
             'p--', color='#17becf', lw=0.7, ms=3,
-            label='PPV bound (fixed)')
+            label=r'PPV ($\mathbf{G}_{\mathrm{FIX}}$)')
     ax.plot(p_arr, throughput['no_interleaver'],
             'v-', color='#7f7f7f', lw=1.0, ms=3,
-            label='Standard Polar (no interleaver)')
+            label=r'Polar (no interleaver)')
     ax.plot(p_arr, throughput['interleaver'],
             '^-', color='#d62728', lw=1.0, ms=3,
-            label='Standard Polar + interleaver')
+            label=r'Polar + interleaver')
     ax.plot(p_arr, throughput['fixed'],
             'D-', color='#ff7f0e', lw=1.2, ms=4,
-            label='Fixed diversity transform')
+            label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
     ax.plot(p_arr, throughput['adaptive'],
             'o-', color='#1f77b4', lw=1.4, ms=4,
-            label='Adaptive diversity transform')
+            label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
 
     ax.set_xlabel(r'Total transmit power $P_{\mathrm{total}}$ (dBW)')
     ax.set_ylabel('Effective throughput (bits/channel use)')
