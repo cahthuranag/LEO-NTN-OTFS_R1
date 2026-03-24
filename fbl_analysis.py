@@ -9,7 +9,7 @@ Provides:
   - Conditional BLER epsilon(gamma) — Eq. (41)
   - Closed-form BLER with shifted gamma distribution — Proposition 1 / Eq. (47)
   - High-SNR approximation revealing diversity order — Proposition 2 / Eq. (49)
-  - Semi-analytical BLER for no-diversity, fixed diversity, adaptive diversity
+  - Semi-analytical BLER for no-diversity and fixed diversity
   - Vectorized PPV bounds for batch computation
 
 Author: Research implementation
@@ -258,21 +258,65 @@ class FiniteBlocklengthBLER:
 
     @staticmethod
     def bler_closed_form(gamma_th: float, gamma_det: float,
-                         gamma_bar_NLOS: float, L_i: int) -> float:
+                         gamma_bar_NLOS: float, L_i: int,
+                         n_c: int = None, R_c: float = None) -> float:
         """
-        Closed-form BLER approximation — Proposition 1 / Eq. (47).
+        Closed-form FBL BLER approximation — Proposition 1.
 
-        epsilon approx P(L-1, (gamma_th - gamma_det) / gamma_bar_NLOS)
+        From the proof (Appendix B):
+          epsilon = beta * sqrt(n_c) * integral_{phi}^{delta} F_gamma(g) dg
+
+        where F_gamma is the CDF of the shifted-gamma distribution,
+        phi = psi - 1/(2*beta*sqrt(n_c)),
+        delta = psi + 1/(2*beta*sqrt(n_c)).
+
+        When n_c is None, falls back to the midpoint approximation F(psi).
         """
-        if gamma_th <= gamma_det:
-            return 0.0
         if gamma_bar_NLOS <= 1e-30:
-            return 1.0
-        x = (gamma_th - gamma_det) / gamma_bar_NLOS
-        a = L_i - 1
-        if a <= 0:
-            return 1.0 - math.exp(-min(x, 700))
-        return float(regularised_lower_inc_gamma(a, x))
+            if gamma_th > gamma_det:
+                return 1.0
+            return 0.0
+
+        a = L_i - 1  # shape parameter
+
+        def _cdf(gamma_val):
+            """CDF of gamma = gamma_det + Gamma(a, gamma_bar_NLOS)."""
+            if gamma_val <= gamma_det:
+                return 0.0
+            x = (gamma_val - gamma_det) / gamma_bar_NLOS
+            if a <= 0:
+                return 1.0 - math.exp(-min(x, 700))
+            return float(regularised_lower_inc_gamma(a, x))
+
+        # Fall back to midpoint (outage) approximation if no blocklength
+        if n_c is None:
+            return _cdf(gamma_th)
+
+        # Piecewise linear parameters (Eq. 44-47)
+        psi = gamma_th
+        R_val = R_c if R_c is not None else math.log2(1.0 + gamma_th)
+        beta = 1.0 / math.sqrt(2.0 * math.pi * (2.0 ** (2.0 * R_val) - 1.0))
+        sqrt_nc = math.sqrt(n_c)
+        half_width = 1.0 / (2.0 * beta * sqrt_nc)
+        phi = psi - half_width
+        delta = psi + half_width
+
+        # Numerical integration of F_gamma over [phi, delta]
+        # using 16-point Gauss-Legendre quadrature
+        n_quad = 16
+        # Gauss-Legendre nodes and weights on [-1, 1]
+        nodes, weights = np.polynomial.legendre.leggauss(n_quad)
+        # Map to [phi, delta]
+        mid = 0.5 * (phi + delta)
+        half = 0.5 * (delta - phi)
+        integral = 0.0
+        for j in range(n_quad):
+            g = mid + half * nodes[j]
+            integral += weights[j] * _cdf(g)
+        integral *= half
+
+        eps = beta * sqrt_nc * integral
+        return max(0.0, min(1.0, eps))
 
     @staticmethod
     def bler_explicit(gamma_th: float, gamma_det: float,
@@ -336,48 +380,36 @@ def bler_no_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     """
     Semi-analytical BLER without diversity transform — Section III.
 
-    Uses the same conditional_bler function as the diversity bounds, but
-    applied per-subchannel at blocklength N_sub = N/n_s. Without a diversity
-    transform, each subchannel independently carries N_sub coded bits with
-    no erasure recovery. The overall BLER is the average of per-subchannel
-    conditional BLERs:
+    Without a diversity transform, each subchannel independently carries
+    its own Polar(N_sub, K_sub) codeword with N_sub = N/n_s, K_sub = K/n_s.
+    The system block fails if ANY subchannel's decode fails:
 
-      epsilon_no = (1/n_s) * sum_j conditional_bler(gamma_j, N_sub, R)
+      epsilon_sys = 1 - prod_j (1 - epsilon_j)
 
-    Blocked subchannels (rate > subchannel capacity) contribute epsilon~1,
-    creating a natural floor proportional to the blockage probability.
-    At moderate SNR, faded subchannels also contribute non-trivially.
-
-    The k_c threshold from the diversity transform is applied as a lower
-    bound: if even the MDS code cannot recover (<k_c surviving), a code
-    without diversity also fails.
+    where epsilon_j = conditional_bler(gamma_j, N_sub, R) is the
+    per-subchannel FBL BLER.
 
     Args:
         gamma_per_sub: (n_s,) per-subchannel SNR (linear)
         erased_mask: (n_s,) bool, True = erased
-        k_c: MDS code dimension (minimum surviving subchannels needed)
-        N: polar code block length
-        K: information bits
+        k_c: MDS code dimension (unused, kept for interface compatibility)
+        N: total block length (split across subchannels)
+        K: total information bits (split across subchannels)
 
     Returns:
-        BLER at this channel realization.
+        System BLER at this channel realization.
     """
     n_s = len(gamma_per_sub)
     N_sub = N // n_s
-    R = K / N
+    R = K / N  # per-subchannel rate = K_sub / N_sub = (K/n_s) / (N/n_s) = K/N
 
-    # k_c threshold: if even diversity code fails, no-diversity also fails
-    surviving = gamma_per_sub[~erased_mask]
-    if len(surviving) < k_c:
-        return 1.0
-
-    # Per-subchannel conditional BLER at blocklength N_sub
-    p_avg = 0.0
+    # System succeeds only if ALL subchannels decode successfully
+    p_all_success = 1.0
     for j in range(n_s):
-        p_avg += conditional_bler(gamma_per_sub[j], N_sub, R)
-    p_avg /= n_s
+        eps_j = conditional_bler(gamma_per_sub[j], N_sub, R)
+        p_all_success *= (1.0 - eps_j)
 
-    return p_avg
+    return 1.0 - p_all_success
 
 
 def _ppv_from_capacity_dispersion(C_eff: float, V_eff: float,
@@ -429,48 +461,3 @@ def bler_fixed_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
     return _ppv_from_capacity_dispersion(C_eff, V_eff, N, R)
 
 
-def bler_adaptive_diversity(gamma_per_sub: np.ndarray, erased_mask: np.ndarray,
-                            block_weights: np.ndarray, k_c: int,
-                            N: int, K: int) -> float:
-    """
-    Semi-analytical BLER with adaptive diversity transform (Algorithm 2) — Section III.
-
-    Algorithm 2 selects T to maximise Q = sum_j eta_j * omega_j (eq. 28),
-    concentrating coded bits on reliable subchannels. The block weights omega_j
-    capture how many coded bits reside on each subchannel. The effective
-    capacity and dispersion are weighted accordingly:
-        C_eff = sum(omega_j * C(gamma_j)) / sum(omega_j)
-        V_eff = sum(omega_j * V(gamma_j)) / sum(omega_j)
-
-    Since the adaptive transform places higher omega_j on subchannels with
-    higher SNR (correlated via the quality metric), C_eff is pulled toward
-    the capacity of stronger subchannels, yielding a lower BLER than the
-    uniform-weight fixed transform.
-
-    Returns 1.0 if fewer than k_c subchannels survive.
-
-    Args:
-        gamma_per_sub: (n_s,) per-subchannel SNR (linear)
-        erased_mask: (n_s,) bool, True = erased
-        block_weights: (n_s,) block Hamming weights from Algorithm 2's G_DIV
-        k_c: MDS code dimension
-        N: polar code block length
-        K: information bits
-
-    Returns:
-        BLER at this channel realization.
-    """
-    surviving_idx = np.where(~erased_mask)[0]
-    if len(surviving_idx) < k_c:
-        return 1.0
-    w = block_weights[surviving_idx]
-    g = gamma_per_sub[surviving_idx]
-    w_sum = np.sum(w)
-    if w_sum < 1e-10:
-        return 1.0
-    R = K / N
-    C_vals = np.array([capacity_awgn(gi) for gi in g])
-    V_vals = np.array([channel_dispersion(gi) for gi in g])
-    C_eff = float(np.sum(w * C_vals) / w_sum)
-    V_eff = float(np.sum(w * V_vals) / w_sum)
-    return _ppv_from_capacity_dispersion(C_eff, V_eff, N, R)

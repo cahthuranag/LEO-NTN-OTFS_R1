@@ -8,7 +8,6 @@ This module provides:
 - GF(2^m) finite field arithmetic (exp/log tables)
 - Faithful binary matrix representation via companion matrix (phi map)
 - Algorithm 1: Construction of fixed diversity transform G_FIX
-- Algorithm 2: Adaptive transform selection with quality metric
 - GF(2) linear algebra utilities (rank, multiply, invert)
 - MDS property verification (Theorem 1)
 - Encoding / decoding interface
@@ -363,80 +362,6 @@ def generate_T_candidates(rho, n_candidates, rng):
     return [generate_candidate_T(rho, rng) for _ in range(n_candidates)]
 
 
-# ============================================================================
-#  G. Algorithm 2: Adaptive Diversity Transform Selection
-# ============================================================================
-
-def quality_metric(G_DIV, reliability, n_s, m):
-    """
-    Compute quality metric Q(G_DIV, eta) from paper.
-
-    Q = sum_{i=1}^{n_s} eta_i * sum_{j in block_i} w_H(g_j)
-
-    where g_j are columns of G_DIV and block_i = columns [(i-1)*m, i*m).
-    w_H is the Hamming weight (number of 1s in a column).
-
-    Higher Q means more coded bits are placed on reliable subchannels.
-
-    Args:
-        G_DIV: (rho x n_out) binary matrix
-        reliability: (n_s,) reliability vector eta
-        n_s: number of subchannels
-        m: extension degree
-
-    Returns: scalar quality metric
-    """
-    Q = 0.0
-    for i in range(n_s):
-        block_cols = G_DIV[:, i * m:(i + 1) * m]
-        # Sum of Hamming weights of columns in this block
-        block_weight = np.sum(block_cols)
-        Q += reliability[i] * block_weight
-    return Q
-
-
-def select_adaptive_transform(G_FIX, reliability, n_candidates=200,
-                               rng=None, m=3, n_s=6):
-    """
-    Algorithm 2: Adaptive Diversity Transform Selection.
-
-    Searches over random invertible transformations T in GL(rho, F_2)
-    to maximize the quality metric Q(T @ G_FIX, eta).
-
-    Args:
-        G_FIX: (rho x n_out) fixed binary transform matrix
-        reliability: (n_s,) reliability vector eta_i = gamma_i / gamma_avg
-        n_candidates: number of candidate transforms to evaluate
-        rng: numpy random generator
-        m: extension degree
-        n_s: number of subchannels
-
-    Returns:
-        (T_star, G_DIV_star): optimal transform and resulting diversity matrix
-    """
-    if rng is None:
-        rng = np.random.default_rng()
-
-    rho = G_FIX.shape[0]
-
-    # Quality of identity transform (= fixed transform baseline)
-    Q_fixed = quality_metric(G_FIX, reliability, n_s, m)
-    T_star = np.eye(rho, dtype=int)
-    G_DIV_star = G_FIX.copy()
-    Q_star = Q_fixed
-
-    # Search over random candidates
-    candidates = generate_T_candidates(rho, n_candidates, rng)
-
-    for T in candidates:
-        G_DIV = gf2_matmul(T, G_FIX)
-        Q = quality_metric(G_DIV, reliability, n_s, m)
-        if Q > Q_star:
-            Q_star = Q
-            T_star = T
-            G_DIV_star = G_DIV
-
-    return T_star, G_DIV_star
 
 
 # ============================================================================
@@ -547,10 +472,21 @@ class DiversityTransformConfig:
     Configuration and interface for diversity transform operations.
 
     Constructs G_FIX on initialization and provides methods for
-    fixed/adaptive transforms and verification.
+    fixed transforms and verification.
     """
 
-    def __init__(self, k_c=4, n_s=6, m=3, irred_poly=0b1011):
+    # Standard irreducible polynomials for GF(2^m)
+    IRRED_POLYS = {
+        2: 0b111,      # x^2 + x + 1
+        3: 0b1011,     # x^3 + x + 1
+        4: 0b10011,    # x^4 + x + 1
+        5: 0b100101,   # x^5 + x^2 + 1
+        6: 0b1000011,  # x^6 + x + 1
+        7: 0b10000011, # x^7 + x + 1
+        8: 0b100011011,# x^8 + x^4 + x^3 + x + 1
+    }
+
+    def __init__(self, k_c=4, n_s=6, m=3, irred_poly=None):
         self.k_c = k_c
         self.n_s = n_s
         self.m = m
@@ -558,28 +494,17 @@ class DiversityTransformConfig:
         self.n_out = n_s * m
         self.max_erasures = n_s - k_c
         self.d_min = n_s - k_c + 1
+        if irred_poly is None:
+            irred_poly = self.IRRED_POLYS.get(m)
+            if irred_poly is None:
+                raise ValueError(f"No default irreducible polynomial for m={m}. "
+                                 f"Supported: {sorted(self.IRRED_POLYS.keys())}")
         self.gf = GF2m(m, irred_poly)
         self.G_FIX = construct_G_FIX(k_c, n_s, m, irred_poly)
 
     def get_fixed_transform(self):
         """Return the fixed diversity transform matrix G_FIX."""
         return self.G_FIX
-
-    def get_adaptive_transform(self, reliability, n_candidates=200, rng=None):
-        """
-        Compute adaptive diversity transform for given reliability vector.
-
-        Args:
-            reliability: (n_s,) reliability vector
-            n_candidates: search pool size
-            rng: random generator
-
-        Returns: G_DIV (rho x n_out binary matrix)
-        """
-        T, G_DIV = select_adaptive_transform(
-            self.G_FIX, reliability, n_candidates, rng,
-            m=self.m, n_s=self.n_s)
-        return G_DIV
 
     def can_recover(self, erased_mask):
         """
@@ -666,25 +591,7 @@ if __name__ == "__main__":
 
     print(f"\n  Overall: {'ALL PATTERNS PASS' if all_pass else 'SOME PATTERNS FAIL'}")
 
-    # --- Algorithm 2: Adaptive transform ---
-    print("\n" + "-" * 60)
-    print(f"\nAlgorithm 2: Adaptive transform selection")
-
     rng = np.random.default_rng(2026)
-
-    # Sample reliability vector (subchannel SNR / avg SNR)
-    reliability = np.array([1.2, 0.3, 1.5, 0.8, 1.1, 0.6])
-    print(f"  Reliability vector eta: {reliability}")
-
-    Q_fixed = quality_metric(G_FIX, reliability, n_s, m)
-    print(f"  Q(G_FIX, eta) = {Q_fixed:.2f}  (fixed baseline)")
-
-    T_star, G_DIV = select_adaptive_transform(
-        G_FIX, reliability, n_candidates=500, rng=rng, m=m, n_s=n_s)
-    Q_adapt = quality_metric(G_DIV, reliability, n_s, m)
-    print(f"  Q(G_DIV, eta) = {Q_adapt:.2f}  (adaptive)")
-    print(f"  Gain: Q_adapt/Q_fixed = {Q_adapt / Q_fixed:.4f}")
-    print(f"  Adaptive >= Fixed: {'YES' if Q_adapt >= Q_fixed else 'NO'}")
 
     # --- Encode, erase, decode test ---
     print("\n" + "-" * 60)

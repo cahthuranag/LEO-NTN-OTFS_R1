@@ -1,5 +1,5 @@
 """
-BLER vs Elevation Angle — 7-curve comparison.
+BLER vs Elevation Angle — 5-curve comparison.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,7 +10,7 @@ from sim_common import (
     ieee_setup, save_figure, DT_CONFIG, N_S, L_TAPS, OTFS_PARAMS,
     slant_range_m, access_fspl_dB, atmospheric_loss_dB, power_to_link_snrs,
     subchannel_elevation_angles, per_subchannel_link_snrs,
-    per_subchannel_eta_ephemeris,
+    per_subchannel_eta_ephemeris, p_block_3gpp,
     create_ephemeris_predictor, mc_trial_one_snr,
     db_to_linear, linear_to_db, ALPHA_POWER,
 )
@@ -25,59 +25,58 @@ def simulate(N=256, K=128, n_subchannels=N_S,
     elevations = np.linspace(elevation_range[0], elevation_range[1], n_points)
 
     K_rice_min, K_rice_max = 1.0, 5.0
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
-    p_block_sub_low, p_block_sub_high = 0.25, 0.08
 
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
-    print(f"BLER vs Elevation (7 curves, OTFS DD-domain MC)")
+    print(f"BLER vs Elevation (5 curves, OTFS DD-domain MC)")
     print(f"  P_total={P_total_dBW:.1f} dBW, MC={n_mc}")
 
     results = {key: np.zeros(n_points) for key in [
-        'ppv_no_diversity', 'ppv_fixed_diversity', 'ppv_adaptive_diversity',
-        'no_interleaver', 'interleaver', 'fixed', 'adaptive']}
+        'ppv_no_diversity', 'ppv_fixed_diversity',
+        'no_interleaver', 'interleaver', 'fixed']}
     results['elevation_deg'] = elevations
     results['P_total_dBW'] = P_total_dBW
 
     R = K / N
     for idx, eps_deg in enumerate(elevations):
-        elev_angles = subchannel_elevation_angles(eps_deg, n_subchannels)
+        elev_angles = subchannel_elevation_angles(eps_deg, n_subchannels,
+                                                      spread_deg=30.0)
         gamma_gs, gamma_su = per_subchannel_link_snrs(P_total_dBW, elev_angles)
 
         elev_frac = (eps_deg - elevation_range[0]) / (elevation_range[1] - elevation_range[0])
         K_rice = K_rice_min + (K_rice_max - K_rice_min) * elev_frac
         K_rice_dB = 10.0 * np.log10(K_rice)
-        p_block_sub = p_block_sub_low + (p_block_sub_high - p_block_sub_low) * elev_frac
+        # 3GPP TR 38.811 elevation-dependent blockage (Eq. 16)
+        p_block_sub = p_block_3gpp(elev_angles)
 
-        eta_ephemeris = per_subchannel_eta_ephemeris(elev_angles, P_total_dBW, K_rice_dB, R)
+        eta_ephemeris = per_subchannel_eta_ephemeris(
+            elev_angles, P_total_dBW, K_rice_dB, R, p_block_per_sub=p_block_sub)
 
-        ppv_no_acc, ppv_fix_acc, ppv_ada_acc = 0.0, 0.0, 0.0
-        err_counts = [0, 0, 0, 0]
+        ppv_no_acc, ppv_fix_acc = 0.0, 0.0
+        err_counts = [0, 0, 0]
 
         for _ in range(n_mc):
             res = mc_trial_one_snr(
                 gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                K_rice, erasure_threshold, p_block_sub, shadow_loss_dB,
+                K_rice, epsilon_th, p_block_sub, shadow_loss_dB,
                 polar_code, rng, use_otfs=True, eta_ephemeris=eta_ephemeris)
             ppv_no_acc += res['ppv_no_div']
             ppv_fix_acc += res['ppv_fix_div']
-            ppv_ada_acc += res['ppv_ada_div']
-            for c in range(4):
-                err_counts[c] += int(res[f'err_{c+1}'])
+            err_counts[0] += int(res['err_1'])
+            err_counts[1] += int(res['err_2'])
+            err_counts[2] += int(res['err_3'])
 
         results['ppv_no_diversity'][idx] = ppv_no_acc / n_mc
         results['ppv_fixed_diversity'][idx] = ppv_fix_acc / n_mc
-        results['ppv_adaptive_diversity'][idx] = ppv_ada_acc / n_mc
         results['no_interleaver'][idx] = err_counts[0] / n_mc
         results['interleaver'][idx] = err_counts[1] / n_mc
         results['fixed'][idx] = err_counts[2] / n_mc
-        results['adaptive'][idx] = err_counts[3] / n_mc
 
         print(f"  Elev={eps_deg:5.1f}deg: NoIntlv={results['no_interleaver'][idx]:.3e}, "
               f"Intlv={results['interleaver'][idx]:.3e}, "
-              f"Fix={results['fixed'][idx]:.3e}, "
-              f"Ada={results['adaptive'][idx]:.3e}")
+              f"Fix={results['fixed'][idx]:.3e}")
 
     return results
 
@@ -88,14 +87,11 @@ def plot(results):
     elev = results['elevation_deg']
 
     ax.semilogy(elev, np.maximum(results['ppv_no_diversity'], 1e-7),
-                'h--', color='#9467bd', lw=0.8, ms=3,
+                'h--', color='#9467bd', lw=1.0, ms=4,
                 label=r'PPV bound (no diversity)')
     ax.semilogy(elev, np.maximum(results['ppv_fixed_diversity'], 1e-7),
-                'p--', color='#17becf', lw=0.8, ms=3,
-                label=r'PPV ($\mathbf{G}_{\mathrm{FIX}}$)')
-    ax.semilogy(elev, np.maximum(results['ppv_adaptive_diversity'], 1e-7),
-                's--', color='#2ca02c', lw=0.8, ms=3,
-                label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}^{\star}$)')
+                'p--', color='#17becf', lw=1.0, ms=4,
+                label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}$)')
     ax.semilogy(elev, np.maximum(results['no_interleaver'], 1e-7),
                 'v-', color='#7f7f7f', lw=1.0, ms=4,
                 label=r'Polar (no interleaver)')
@@ -104,27 +100,20 @@ def plot(results):
                 label=r'Polar + interleaver')
     ax.semilogy(elev, np.maximum(results['fixed'], 1e-7),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
-                label=r'Polar + $\mathbf{G}_{\mathrm{FIX}}$')
-    ax.semilogy(elev, np.maximum(results['adaptive'], 1e-7),
-                'o-', color='#1f77b4', lw=1.4, ms=4,
-                label=r'Polar + $\mathbf{G}_{\mathrm{DIV}}^{\star}$')
-
-    fixed_clip = np.maximum(results['fixed'], 1e-7)
-    adapt_clip = np.maximum(results['adaptive'], 1e-7)
-    ax.fill_between(elev, adapt_clip, fixed_clip, alpha=0.12, color='#1f77b4')
+                label=r'Proposed Polar + $\mathbf{G}_{\mathrm{DIV}}$')
 
     ax.set_xlabel(r'Elevation angle (degrees)')
-    ax.set_ylabel('Block error rate (BLER)')
-    ax.legend(fontsize=6, loc='upper right', framealpha=0.9)
-    ax.set_ylim(5e-4, 2)
+    ax.set_ylabel(r'System BLER $\epsilon_{\mathrm{sys}}$')
+    ax.legend(fontsize=6, loc='lower left', framealpha=1.0)
+    ax.set_ylim(5e-4, 1.1)
     ax.grid(True, which='both', ls='--', alpha=0.3)
 
     save_figure(fig, 'bler_vs_elevation_comparison')
 
 
 def save_csv(results):
-    keys = ['ppv_no_diversity', 'ppv_fixed_diversity', 'ppv_adaptive_diversity',
-            'no_interleaver', 'interleaver', 'fixed', 'adaptive']
+    keys = ['ppv_no_diversity', 'ppv_fixed_diversity',
+            'no_interleaver', 'interleaver', 'fixed']
     with open('bler_vs_elevation.csv', 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['elevation_deg'] + keys)
@@ -137,6 +126,6 @@ def save_csv(results):
 
 
 if __name__ == "__main__":
-    results = simulate(n_mc=3000)
+    results = simulate(n_mc=10000)
     plot(results)
     save_csv(results)

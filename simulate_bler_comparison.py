@@ -52,7 +52,7 @@ from fbl_analysis import (
 from polar_code import PolarCode
 from diversity_transform import (
     DiversityTransformConfig, gf2_rank, gf2_matmul,
-    generate_candidate_T, quality_metric,
+    generate_candidate_T,
 )
 
 # ============================================================================
@@ -122,7 +122,7 @@ _TAP_POWERS_LIN = _TAP_POWERS_LIN / np.sum(_TAP_POWERS_LIN)  # normalise to 1
 
 # Pre-generate candidate G_DIV matrices for Algorithm 2
 _T_POOL_RNG = np.random.default_rng(42)
-_N_POOL = 200
+_N_POOL = 1000
 
 _block_weights_pool = np.zeros((_N_POOL, _n_s), dtype=float)
 _G_DIV_POOL = []
@@ -794,7 +794,7 @@ def _create_ephemeris_predictor(elevation_deg, P_total_dBW, K_rice_dB=3.0):
 # ============================================================================
 
 def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
-                       max_erasures, K_rice, erasure_threshold, p_block_sub,
+                       max_erasures, K_rice, epsilon_th, p_block_sub,
                        shadow_loss_dB, polar_code, rng,
                        use_otfs=False, eta_ephemeris=None):
     """
@@ -824,16 +824,15 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
             gamma_avg_SU, gamma_gs, n_subchannels, K_rice, p_block_sub,
             shadow_loss_dB, rng)
 
-    # ---- Erasure mask (shared across PPV bounds and diversity MC curves) ----
-    erased_mask = gamma_e2e < erasure_threshold
-    n_erased = int(np.sum(erased_mask))
-    k_c = _DT_CONFIG.k_c
-
-    # ---- Instantaneous reliability metric η (paper Eq. 34-35) ----
-    # η_i = 1 - ε_i where ε_i = conditional_bler(γ_i, N_sub, R)
-    # Used for MAP LLR scaling (receiver side)
     R = K / N
     N_sub = N // n_subchannels
+    k_c = _DT_CONFIG.k_c
+    erased_mask = np.array([
+        conditional_bler(gamma_e2e[j], N_sub, R) > epsilon_th
+        for j in range(n_subchannels)
+    ])
+    n_erased = int(np.sum(erased_mask))
+
     eta_inst = np.zeros(n_subchannels)
     for j in range(n_subchannels):
         if erased_mask[j]:
@@ -842,14 +841,10 @@ def _mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
             eps_j = conditional_bler(gamma_e2e[j], N_sub, R)
             eta_inst[j] = 1.0 - eps_j
 
-    # ---- Algorithm 2 T-selection: use ephemeris eta if available ----
-    # Ephemeris eta is computed pre-transmission at the satellite side
-    # and is uniform across subchannels (same elevation for all).
-    # Instantaneous eta is used for MAP scaling at the receiver.
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
     # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
-    tau_safe = 0.9
+    tau_safe = 0.6
     safe_mask = eta_for_T > tau_safe
     eta_safe = np.where(safe_mask, eta_for_T, 0.0)
 
@@ -1014,9 +1009,9 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
 
     K_rice = 2.0                  # Rician K-factor (3 dB, NTN suburban)
     K_rice_dB = 10.0 * np.log10(K_rice)
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
-    p_block_sub = 0.15            # Independent per-subchannel blockage probability
+    p_block_sub = 0.25            # Independent per-subchannel blockage probability
 
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
 
@@ -1062,7 +1057,7 @@ def simulate_bler_vs_power(N: int = 256, K: int = 128,
         for trial in range(n_mc):
             res = _mc_trial_one_snr(
                 gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                K_rice, erasure_threshold, p_block_sub,
+                K_rice, epsilon_th, p_block_sub,
                 shadow_loss_dB, polar_code, rng,
                 use_otfs=True, eta_ephemeris=eta_ephemeris)
 
@@ -1118,7 +1113,7 @@ def simulate_bler_vs_elevation(N: int = 256, K: int = 128,
 
     K_rice_min = 1.0              # 0 dB at low elevation
     K_rice_max = 5.0              # 7 dB at high elevation
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
     p_block_sub_low = 0.25        # per-subchannel blockage at low elevation
     p_block_sub_high = 0.08       # per-subchannel blockage at high elevation
@@ -1170,7 +1165,7 @@ def simulate_bler_vs_elevation(N: int = 256, K: int = 128,
         for trial in range(n_mc):
             res = _mc_trial_one_snr(
                 gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                K_rice, erasure_threshold, p_block_sub,
+                K_rice, epsilon_th, p_block_sub,
                 shadow_loss_dB, polar_code, rng,
                 use_otfs=True, eta_ephemeris=eta_ephemeris)
 
@@ -1634,7 +1629,7 @@ def simulate_bler_vs_blockage(N: int = 256, K: int = 128,
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
 
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
@@ -1658,7 +1653,7 @@ def simulate_bler_vs_blockage(N: int = 256, K: int = 128,
         for _ in range(n_mc):
             res = _mc_trial_one_snr(
                 gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                K_rice, erasure_threshold, p_blk,
+                K_rice, epsilon_th, p_blk,
                 shadow_loss_dB, polar_code, rng,
                 use_otfs=True, eta_ephemeris=eta_ephemeris)
             err_counts[0] += int(res['err_1'])
@@ -1764,9 +1759,9 @@ def simulate_bler_vs_blocklength(blocklengths=None,
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
-    p_block_sub = 0.15
+    p_block_sub = 0.25
 
     n_pts = len(blocklengths)
     results = {key: np.zeros(n_pts) for key in [
@@ -1793,7 +1788,7 @@ def simulate_bler_vs_blocklength(blocklengths=None,
         for _ in range(n_mc):
             res = _mc_trial_one_snr(
                 gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                K_rice, erasure_threshold, p_block_sub,
+                K_rice, epsilon_th, p_block_sub,
                 shadow_loss_dB, polar_code, rng,
                 use_otfs=True, eta_ephemeris=eta_ephemeris)
             ppv_acc[0] += res['ppv_no_div']
@@ -1900,9 +1895,9 @@ def simulate_otfs_vs_ofdm(N: int = 256, K: int = 128,
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
-    p_block_sub = 0.15
+    p_block_sub = 0.25
 
     polar_code = PolarCode(N, K, design_snr_dB=1.0, list_size=8)
     R = K / N
@@ -1929,7 +1924,7 @@ def simulate_otfs_vs_ofdm(N: int = 256, K: int = 128,
             for _ in range(n_mc):
                 res = _mc_trial_one_snr(
                     gamma_su, gamma_gs, N, K, n_subchannels, max_erasures,
-                    K_rice, erasure_threshold, p_block_sub,
+                    K_rice, epsilon_th, p_block_sub,
                     shadow_loss_dB, polar_code, rng,
                     use_otfs=use_otfs, eta_ephemeris=eta_ephemeris)
                 err_counts['no_interleaver'] += int(res['err_1'])
@@ -2007,7 +2002,7 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
                           G_FIX_block_weights, X_ALL_local, S_ALL_FIX_local,
                           X_MASK_0_local, X_MASK_1_local,
                           subchannel_map, n_sym_per_sub,
-                          K_rice, erasure_threshold, p_block_sub,
+                          K_rice, epsilon_th, p_block_sub,
                           shadow_loss_dB, polar_code, rng,
                           eta_ephemeris=None):
     """
@@ -2028,13 +2023,14 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
     gamma_e2e, blocked_mask = _generate_multipath_per_subchannel(
         gamma_avg_SU, gamma_gs, n_s, K_rice, p_block_sub, shadow_loss_dB, rng)
 
-    # Erasure mask
-    erased_mask = gamma_e2e < erasure_threshold
-    n_erased = int(np.sum(erased_mask))
-
-    # Instantaneous eta
     R = K / N
     N_sub = N // n_s
+    erased_mask = np.array([
+        conditional_bler(gamma_e2e[j], N_sub, R) > epsilon_th
+        for j in range(n_s)
+    ])
+    n_erased = int(np.sum(erased_mask))
+
     eta_inst = np.zeros(n_s)
     for j in range(n_s):
         if erased_mask[j]:
@@ -2046,7 +2042,7 @@ def _mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
     eta_for_T = eta_ephemeris if eta_ephemeris is not None else eta_inst
 
     # S_safe: subchannels with predicted reliability above threshold (Paper Eqs. 58-59)
-    tau_safe = 0.9
+    tau_safe = 0.6
     safe_mask = eta_for_T > tau_safe
     eta_safe = np.where(safe_mask, eta_for_T, 0.0)
 
@@ -2190,9 +2186,9 @@ def simulate_bler_vs_n_subchannels(N: int = 256, K: int = 128,
 
     K_rice = 2.0
     K_rice_dB = 10.0 * np.log10(K_rice)
-    erasure_threshold = db_to_linear(-3.0)
+    epsilon_th = 0.1
     shadow_loss_dB = 20.0
-    p_block_sub = 0.15
+    p_block_sub = 0.25
     R = K / N
 
     n_pts = len(ns_values)
@@ -2276,7 +2272,7 @@ def simulate_bler_vs_n_subchannels(N: int = 256, K: int = 128,
                 G_FIX_bw, X_ALL_local, S_ALL_FIX_local,
                 X_MASK_0_local, X_MASK_1_local,
                 sc_map, n_sym,
-                K_rice, erasure_threshold, p_block_sub,
+                K_rice, epsilon_th, p_block_sub,
                 shadow_loss_dB, polar_code, rng,
                 eta_ephemeris=eta_ephemeris)
             ppv_fix_acc += res['ppv_fix']
@@ -2350,7 +2346,7 @@ def main():
     print("(End-to-End Monte Carlo — Diversity Transform in Signal Path)")
     print("=" * 80)
 
-    N, K = 256, 128
+    N, K = 256, 192
     n_subchannels = _DT_CONFIG.n_s
     max_erasures = _DT_CONFIG.max_erasures
 
@@ -2408,12 +2404,6 @@ def main():
     results_throughput = simulate_throughput_reliability(results_power, N, K)
     plot_throughput_reliability(results_throughput)
     save_throughput_csv(results_throughput)
-
-    # Rank Recovery Probability (algebraic, no MC)
-    print("\n" + "-" * 60)
-    results_rank = simulate_rank_recovery()
-    plot_rank_recovery(results_rank)
-    save_rank_recovery_csv(results_rank)
 
     # BLER vs Blockage Probability
     print("\n" + "-" * 60)
