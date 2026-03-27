@@ -93,10 +93,10 @@ def plot(results):
                 'p--', color='#17becf', lw=1.0, ms=4,
                 label=r'PPV ($\mathbf{G}_{\mathrm{DIV}}$)')
     ax.semilogy(elev, np.maximum(results['no_interleaver'], 1e-7),
-                'v-', color='#7f7f7f', lw=1.0, ms=4,
+                'v-', color='#2ca02c', lw=1.0, ms=4,
                 label=r'Polar (no interleaver)')
     ax.semilogy(elev, np.maximum(results['interleaver'], 1e-7),
-                '^-', color='#d62728', lw=1.0, ms=4,
+                '-', color='#d62728', lw=1.0,
                 label=r'Polar + interleaver')
     ax.semilogy(elev, np.maximum(results['fixed'], 1e-7),
                 'D-', color='#ff7f0e', lw=1.2, ms=4,
@@ -105,7 +105,7 @@ def plot(results):
     ax.set_xlabel(r'Elevation angle (degrees)')
     ax.set_ylabel(r'System BLER $\epsilon_{\mathrm{sys}}$')
     ax.legend(fontsize=6, loc='lower left', framealpha=1.0)
-    ax.set_ylim(5e-4, 1.1)
+    ax.set_ylim(1e-2, 1.1)
     ax.grid(True, which='both', ls='--', alpha=0.3)
 
     save_figure(fig, 'bler_vs_elevation_comparison')

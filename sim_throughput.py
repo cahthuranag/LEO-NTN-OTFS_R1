@@ -89,7 +89,7 @@ def plot(throughput):
     ax.set_xlabel(r'Total transmit power $P_{\mathrm{total}}$ (dBW)')
     ax.set_ylabel('Throughput (bits/channel use)', fontsize=8)
     ax.legend(fontsize=6, loc='upper left', framealpha=1.0)
-    ax.set_xlim(0, None)
+    ax.set_xlim(0, 25)
     ax.set_ylim(0, None)
     ax.grid(True, ls='--', alpha=0.3)
 

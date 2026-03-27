@@ -21,7 +21,7 @@ from polar_code import PolarCode
 
 def simulate(N=256, K=128, n_subchannels=N_S,
              max_erasures=DT_CONFIG.max_erasures,
-             power_range_dBW=(0, 20), ref_elevation_deg=60.0,
+             power_range_dBW=(-6, 25), ref_elevation_deg=40.0,
              n_points=16, n_mc=5000):
     rng = np.random.default_rng(2026)
     power_dBW_arr = np.linspace(power_range_dBW[0], power_range_dBW[1], n_points)
@@ -110,8 +110,8 @@ def plot(results):
     ax.legend(fontsize=6.5, loc='lower left', ncol=2, framealpha=1.0,
               columnspacing=0.8, handletextpad=0.4, handlelength=1.5,
               borderpad=0.4, labelspacing=0.3)
-    ax.set_xlim(0, 26)
-    ax.set_ylim(1e-2, 1.1)
+    ax.set_xlim(0, 25)
+    ax.set_ylim(1e-3, 1.1)
     ax.grid(True, which='both', ls='--', alpha=0.3)
 
     save_figure(fig, 'bler_comparison')
@@ -132,6 +132,6 @@ def save_csv(results):
 
 
 if __name__ == "__main__":
-    results = simulate(n_mc=200)
+    results = simulate(n_mc=10000)
     plot(results)
     save_csv(results)

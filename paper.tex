@@ -32,15 +32,16 @@
 \newtheorem{definition}{Definition}
 \newtheorem{proposition}{Proposition}
 
-\hyphenation{op-tical net-works semi-conduc-tor IEEE-Xplore}
-\usetikzlibrary{arrows.meta, positioning, fit, calc}
 
+\usetikzlibrary{arrows.meta, positioning, fit, calc}
+\newtheorem{remark}{Remark}
 %  mathematical commands
 \newcommand{\bftheta}{\boldsymbol{\theta}}
 \newcommand{\bfphi}{\boldsymbol{\phi}}
 \newcommand{\bfvarphi}{\boldsymbol{\varphi}}
 \newcommand{\vect}[1]{\bm{#1}}
 \newcommand{\field}[1]{\mathbb{#1}}
+
 
 \begin{document}
 
@@ -66,7 +67,7 @@ p.kourtessis@herts.ac.uk, j.m.senior@herts.ac.uk).}}
 
 
 \begin{abstract}
-Low Earth orbit (LEO) satellite constellations are a key enabler for non-terrestrial networks (NTNs) in sixth-generation (6G) systems. However, achieving high reliability over NTN links for mission-critical applications remains challenging, particularly for high-mobility terminals. Existing transmission diversity techniques based on selection combining or maximal ratio combining (MRC) provide no guaranteed recovery under simultaneous channel outages. Moreover, conventional retransmission schemes in the NTN are incompatible with strict latency constraints in 6G. This paper introduces a diversity transform that integrates forward error correction (FEC) coding with transmission diversity to improve the reliability of orthogonal time frequency space (OTFS)-modulated LEO NTN downlinks while eliminating the need for retransmissions. The transform is inserted between the FEC encoder and the modulator, enabling compatibility with various coding schemes and channel models. In this system, a data word is first partitioned into subwords, each independently FEC encoded. A diversity mapper then distributes these encoded subwords across the available subchannels using a binary transform matrix derived from a Reed–Solomon code. This structure guarantees full recovery of the message whenever a sufficient number of satellite subchannels survive. An ephemeris-driven reliability prediction framework is developed, combining orbital mechanics, atmospheric models, and a finite-blocklength error probability analysis derived for OTFS transmission over transparent satellite relays. The framework enables proactive outage prediction without channel state information feedback. Simulation results show that the proposed diversity transform provides lower block error rate and reduced latency compared to standalone FEC and retransmission schemes, especially under blockage and high-Doppler conditions characteristic of LEO NTN links.
+Low Earth orbit (LEO) satellite constellations are a key enabler for non-terrestrial networks (NTNs) in sixth-generation (6G) systems. However, achieving high reliability over NTN links for mission-critical applications remains challenging, particularly for high-mobility terminals. Existing transmission diversity techniques based on selection combining or maximal ratio combining (MRC) provide no guaranteed recovery under simultaneous channel outages. Moreover, conventional retransmission schemes in the NTN are incompatible with strict latency constraints in 6G. This paper introduces a diversity transform that integrates forward error correction (FEC) coding with transmission diversity to improve the reliability of orthogonal time frequency space (OTFS)-modulated LEO NTN downlinks by guaranteeing full message recovery under any outage pattern affecting up to a prescribed number of subchannels while eliminating the need for retransmissions. The transform is inserted between the FEC encoder and the modulator, enabling compatibility with various coding schemes and channel models. In this system, a data word is first partitioned into subwords, each independently FEC encoded. A diversity mapper then distributes these encoded subwords across the available subchannels using a binary transform matrix derived from a Reed–Solomon code. This structure guarantees full recovery of the message whenever a sufficient number of satellite subchannels survive. An ephemeris-driven reliability prediction framework is developed, combining orbital mechanics, atmospheric models, and a finite-blocklength error probability analysis derived for OTFS transmission over transparent satellite relays. The framework enables proactive outage prediction without channel state information feedback. Simulation results show that the proposed diversity transform provides lower block error rate and reduced latency compared to standalone FEC and retransmission schemes, especially under blockage and high-Doppler conditions characteristic of LEO NTN links.
 \end{abstract}
 \begin{IEEEkeywords}
 Low-Earth-orbit (LEO) satellite communication, non-terrestrial networks (NTNs),
@@ -76,9 +77,9 @@ finite-blocklength analysis.
 
 \section{Introduction}
 \label{sec:introduction}
-\IEEEPARstart{M}{ore} than 2.2 billion people, over one quarter of the global population, still lack internet access~\cite{ITU2025Facts}. To bridge this connectivity gap, Low Earth orbit (LEO) satellite constellations have emerged as a promising approach to achieving global connectivity~\cite{Kodheli2021,3GPP38821,Lin2021,Luo24}. However, when LEO satellite communication (SatCom) is used for mission-critical applications such as autonomous vehicles, remote surgery, and industrial control, high reliability and low latency are required~\cite{Azari2022, Nguyen2024, Durisi2016}. Achieving high reliability and low latency over LEO non-terrestrial networks (NTN) links remains a challenge due to highly dynamic channel conditions, including rapid Doppler shifts, long propagation delays, and limited link budget~\cite{11240599}. These challenges are further amplified for high mobility terminals such as high-speed trains, unmanned aerial vehicles (UAVs), and vehicular platforms, where rapid channel variations compound the already severe Doppler shifts induced by LEO orbital motion~\cite{Li2021}. Conventional retransmission schemes such as automatic repeat request (ARQ) and hybrid ARQ (HARQ) are incompatible with the strict latency constraints of mission‑critical applications. Consequently, a retransmission-free approach is necessary to provide high reliability through transmission diversity. Satellite diversity is a well-established countermeasure against shadowing and blockage~\cite{Buzzi2023,596901,11299592}, eliminating the need for retransmission schemes. Multi-connectivity, which creates a channel comprising multiple independently fading subchannels, is inherently capable of supporting transmission diversity. However, current multi-connectivity designs combine independently received signal replicas through selection or maximal ratio combining (MRC)~\cite{li2024multiple}. These approaches offer statistical diversity gains but cannot guarantee data recovery when several subchannels are simultaneously lost, a scenario that frequently arises due to the correlated elevation-angle dynamics of co-visible LEO satellites at low elevations. To overcome this limitation, a more structured approach is needed, one that guarantees recovery under any outage pattern affecting up to a certain number of subchannels. The diversity transform framework meets this need by inserting a linear mixing layer between the forward error correction (FEC) encoder and the physical subchannels, enabling algebraic recovery of the original message whenever a sufficient number of subchannels survive~\cite{Arikan2025_patent,545895}. This transform is realized through a rectangular binary matrix whose algebraic structure ensures recoverability under prescribed outage patterns. A key architectural feature is the modular separation between error correction and diversity functions, providing well‑defined interfaces to the encoder and the channel. This allows a given diversity transform to be composed with any FEC scheme, including low-density parity-check (LDPC), turbo, or polar codes, and any compatible channel model without requiring cross-layer redesign. The algebraic strength of this framework lies in its full rank criterion. When a subchannel outage erases an entire group of transform outputs, the data word remains recoverable if and only if the surviving submatrix retains full row rank. Unlike statistical combining methods, which degrade under correlated outages, the full-rank criterion provides a strict algebraic guarantee: any outage pattern within the transform’s design space enables perfect recovery of the original message.
+\IEEEPARstart{M}{ore} than 2.2 billion people, over one quarter of the global population, still lack internet access~\cite{ITU2025Facts}. To bridge this connectivity gap, Low Earth orbit (LEO) satellite constellations have emerged as a promising approach to achieving global connectivity~\cite{Kodheli2021,3GPP38821,Lin2021,Luo24}. However, when LEO satellite communication (SatCom) is used for mission-critical applications such as autonomous vehicles, remote surgery, and industrial control, high reliability and low latency are required~\cite{Azari2022, Nguyen2024, Durisi2016}. Achieving high reliability and low latency over LEO non-terrestrial networks (NTN) links remains a challenge due to highly dynamic channel conditions, including rapid Doppler shifts, long propagation delays, and limited link budget~\cite{11240599}. These challenges are further amplified for high mobility terminals such as high-speed trains, unmanned aerial vehicles (UAVs), and vehicular platforms, where rapid channel variations compound the already severe Doppler shifts induced by LEO orbital motion~\cite{Li2021}. Conventional retransmission schemes such as automatic repeat request (ARQ) and hybrid ARQ (HARQ) are incompatible with the strict latency constraints of mission‑critical applications. Consequently, a retransmission-free approach is necessary to provide high reliability through transmission diversity. Satellite diversity is a well-established countermeasure against shadowing and blockage~\cite{Buzzi2023,596901,11299592,Wang2003}, eliminating the need for retransmission schemes. Multi-connectivity, which creates a channel comprising multiple independently fading subchannels, is inherently capable of supporting transmission diversity. However, current multi-connectivity designs combine independently received signal replicas through selection or maximal ratio combining (MRC)~\cite{li2024multiple}. These approaches offer statistical diversity gains but cannot guarantee data recovery when several subchannels are simultaneously lost, a scenario that frequently arises due to the correlated elevation-angle dynamics of co-visible LEO satellites at low elevations. To overcome this limitation, a more structured approach is needed, one that guarantees recovery under any outage pattern affecting up to a certain number of subchannels. The diversity transform framework meets this need by inserting a linear mixing layer between the forward error correction (FEC) encoder and the physical subchannels, enabling algebraic recovery of the original message whenever a sufficient number of subchannels survive~\cite{Arikan2025_patent,545895}. The diversity transform is implemented using a rectangular binary matrix whose algebraic structure ensures recoverability under prescribed outage patterns. The transform outputs are formed as linear combinations of the encoded subwords according to the rows of this matrix. A key architectural feature of this system is the modular separation between error correction and diversity functions, providing well‑defined interfaces to the encoder and the channel. This allows a given diversity transform to be composed with any FEC scheme, including low-density parity-check (LDPC), turbo, or polar codes, and any compatible channel model without requiring cross-layer redesign. The algebraic strength of this framework lies in its full rank criterion. When a subchannel outage erases an entire group of transform outputs, the data word remains recoverable if and only if the surviving submatrix retains full row rank. Unlike statistical combining methods, which degrade under correlated outages, the full-rank criterion provides a strict algebraic guarantee: any outage pattern within the transform’s design space enables perfect recovery of the original message.
 The diversity transform is constructed based on a predicted erasure 
-pattern derived from per subchannel reliability analysis. In satellite communication systems, obtaining accurate channel state information (CSI) is difficult due to high mobility and long propagation delays. Satellites also use many antenna elements to compensate for large path loss, which significantly increases the CSI overhead. Most significantly, CSI feedback mechanisms cannot be used in mission‑critical applications due to stringent latency constraints. Thus, this paper proposes an ephemeris based channel prediction framework~\cite{10902219} to compute the per subchannel reliability scores used for transform selection, thus eliminating the need for CSI feedback from the user equipment.
+pattern derived from per subchannel reliability analysis in this paper. In satellite communication systems, obtaining accurate channel state information (CSI) feedback is difficult due to high mobility and long propagation delays. Satellites also use many antenna elements to compensate for large path loss, which significantly increases the CSI overhead. Most significantly, CSI feedback mechanisms cannot be used in mission‑critical applications due to stringent latency constraints. Thus, this paper proposes an ephemeris based channel prediction framework~\cite{10902219} to compute the per subchannel reliability scores used for transform selection, thus eliminating the need for CSI feedback from the user equipment.
 
 Although the diversity transform addresses satellite outage protection in a LEO-based SatCom system, the physical layer modulation on each subchannel must mitigate the severe Doppler shifts and multipath effects due to rapid LEO orbital motion, which are further compounded by UE mobility. The resulting doubly selective channel renders conventional orthogonal frequency-division multiplexing (OFDM) unsuitable due to inter-carrier interference from large Doppler spreads~\cite{Li2021}. Orthogonal time frequency space (OTFS) modulation addresses this limitation by mapping symbols onto a delay-Doppler (DD) grid and employing the quasi-static channel structure to achieve full multipath diversity~\cite{Hadani2017,Raviteja2018}. OTFS is therefore adopted as the physical-layer waveform for each subchannel in the proposed LEO-based communication system.
 
@@ -90,21 +91,21 @@ Conventional communication systems rely on long codewords to achieve high reliab
 \par Transmission diversity over multiple independently fading subchannels has been a cornerstone of reliable data recovery in wireless communications for decades~\cite{661038,11202644}. By transmitting replicas of the same information across independent fading paths, the probability of deep fades simultaneously affecting all paths is significantly reduced, thereby improving link reliability~\cite{Cacuango2025}. On the other hand, several studies have introduced diversity-guaranteeing coding over non-ergodic fading or block fading channels~\cite{Ju2022,5550477,6069883}. For example, polar codes have been combined with interleaving and multi-kernel constructions to enhance resilience over block fading channels~\cite{Ju2022,Niu2021,Mori2010}. However, none of these methods offers an explicit algebraic condition for guaranteed recovery. They also fail to provide strict worst-case guarantees against particular outage patterns. Recently, an error correction coding scheme that integrates transmission diversity was introduced in~\cite{Arikan2025_patent}. The framework proposed in~\cite{Arikan2025_patent} guarantees full message recovery from any sufficient subset of surviving subchannels under block-aligned erasures, requiring no interleavers. Nevertheless, it has not been applied to any specific channel model or communication system, and its iterative receiver architecture introduces additional decoding latency.
 
 In addition, advanced waveforms have been proposed for SatCom to address its 
-unique challenges, such as severe Doppler shifts. Among these, OTFS modulation 
+unique challenges, such as severe Doppler shifts \cite{11373535}. Among these, OTFS modulation 
 has emerged as a particularly promising waveform for LEO SatCom~\cite{Shi2022, 
-Ren2025, 9508932}. A key property of OTFS is that it transforms the time-varying 
+Ren2025, 9508932,11373535}. A key property of OTFS is that it transforms the time-varying 
 channel into a two-dimensional representation in the DD domain, 
 where all transmitted symbols undergo an identical channel gain~\cite{9904495}. Consequently, OTFS mitigates the severe Doppler effects caused by high relative velocities between satellites and ground users, delivering improved robustness and reliability over traditional schemes such as OFDM. 
 Existing studies have demonstrated these advantages in LEO satellite systems, showing that OTFS exhibits strong resilience under high mobility conditions typical of LEO orbits~\cite{Shi2022, Shi2024_Network}. Moreover, coded OTFS schemes achieve full multipath diversity when the DD grid dimensions exceed the number of resolvable paths, thereby providing substantial diversity gains and enhanced error performance~\cite{Li2021}.
 
-Despite these advantages, OTFS-modulated systems for low‑latency applications introduce additional design challenges, as existing outage performance analyses of OTFS~\cite{Shi2022} assume infinite blocklength, an assumption unsuitable for mission‑critical communications. Finite‑blocklength analysis has received considerable attention in the literature, motivated by the short‑packet transmission requirements~\cite{Durisi2016, Basnayaka2022} of modern mission‑critical communications. For example, non‑asymptotic bounds on achievable rate at finite-blocklength were established in~\cite{Polyanskiy2010}, with extensions to quasi‑static fading channels in~\cite{Yang2014, Durisi2016, Makki2014}. In LEO NTN systems, short‑packet transmission is further constrained by the limited OTFS frame dimensions imposed by coherence time and end‑to‑end latency budgets~\cite{10847811}, making finite‑blocklength theory a primary design consideration rather than an asymptotic blocklength assumption as in conventional wireless systems~\cite{Basnayaka2022,Makki2014}. Thus, investigating the block error rate (BLER) of OTFS under finite-blocklength is necessary to align theoretical analysis with practical implementation of this modulation scheme in LEO NTNs. Finite‑blocklength outage bounds for OTFS were derived in~\cite{Zhang2024} by reformulating the problem as an equivalent parallel AWGN channel. However, that analysis is restricted to generic terrestrial channels; it does not capture the fading characteristics of LEO NTN links, the relay structure, or how the resulting BLER expressions connect to a diversity transform design. To the best of the authors’ knowledge, no existing work has analysed the diversity transform in the finite‑blocklength regime, and its performance has not been evaluated within a practical communication system.
+Despite these advantages, OTFS-modulated systems for low‑latency applications introduce additional design challenges, as existing outage performance analyses of OTFS~\cite{Shi2022} assume infinite blocklength, an assumption unsuitable for mission‑critical communications~\cite{10529933}. Finite‑blocklength analysis has received considerable attention in the literature, motivated by the short‑packet transmission requirements~\cite{Durisi2016, Basnayaka2022,9528059} of modern mission‑critical communications. For example, non‑asymptotic bounds on achievable rate at finite-blocklength were established in~\cite{Polyanskiy2010}, with extensions to quasi‑static fading channels in~\cite{Yang2014, Durisi2016, Makki2014}. In LEO NTN systems, short‑packet transmission is further constrained by the limited OTFS frame dimensions imposed by coherence time and end‑to‑end latency budgets~\cite{10847811}, making finite‑blocklength theory a primary design consideration rather than an asymptotic blocklength assumption as in conventional wireless systems~\cite{Basnayaka2022,Makki2014}. Thus, investigating the block error rate (BLER) of OTFS under finite-blocklength is necessary to align theoretical analysis with practical implementation of this modulation scheme in LEO NTNs. Finite‑blocklength outage bounds for OTFS were derived in~\cite{Zhang2024} by reformulating the problem as an equivalent parallel AWGN channel. However, that analysis is restricted to generic terrestrial channels; it does not capture the fading characteristics of LEO NTN links, the relay structure, or how the resulting BLER expressions connect to a diversity transform design. To the best of the authors’ knowledge, no existing work has analysed the diversity transform in the finite‑blocklength regime, and its performance has not been evaluated within a practical communication system.
 
 \subsection{Motivations and Contributions}
 \label{sec:motivations_contributions}
 The literature survey reveals the following critical gaps. First, existing multi-satellite diversity techniques rely on statistical combining and cannot
   guarantee data recovery under arbitrary block-erasure patterns. Second, no algebraic framework exists for constructing diversity transforms for SatCom
   systems. Furthermore, very limited work has been conducted on diversity-transform-supported error correction in wireless communications, and no prior work has analysed the performance of such error correction schemes in a practical setting compared with existing standalone FEC systems. Third, no
-  finite-blocklength BLER analysis exists for OTFS based SatCom systems under Rician fading. This paper addresses these gaps by
+  finite-blocklength BLER analysis exists for OTFS based SatCom systems under Rician fading. While the algebraic framework for block-erasure recovery was introduced in~\cite{Arikan2025_patent}, no analysis was provided for any specific channel model or communication system. This paper addresses these gaps by
   developing a diversity transform architecture for LEO based SatCom. The main contributions are as follows:
 \begin{itemize}
 \item \textit{Diversity Transform for NTN Communications:}
@@ -137,7 +138,7 @@ recovery guarantees.
 A scheme to combine FEC with transmission diversity for NTN communications is introduced. Polar codes are adopted as the FEC component, and the combined polar diversity generator matrix has a Kronecker-product structure, 
 forming a single rectangular code. 
 \item \textit{Latency and Reliability Analysis of Diversity Transform:}
-We derive an overall BLER expression for the proposed diversity-transform architecture that accounts for both the irrecoverable erasure event and the residual FEC decoding error on surviving subchannels. We further prove that the minimum OTFS frame blocklength required to achieve a target system reliability decreases monotonically with the number of subchannels and the maximum distance separable (MDS) minimum distance.
+We derive an overall BLER expression for the proposed diversity-transform architecture that accounts for both the irrecoverable erasure event and the residual FEC decoding error on surviving subchannels. We further prove that the minimum OTFS frame blocklength required to achieve a target system reliability decreases monotonically with the number of subchannels and the maximum distance separable (MDS) minimum distance (Corollary~\ref{cor:latency_reduction}).
 \end{itemize}
 \subsection{Organisation}
 \label{sec:organisation}
@@ -627,7 +628,7 @@ $ is obtained, and the average SNR becomes
 = \frac{P_k \mathcal{G}_k G_{i,k\ell,\mathrm{LS}}(t) \mathcal{G}_\ell}
 {\sigma_{n,\ell}^2}.
 \label{eq:avg_snr_generic}
-\end{equation} Under the transparent relay architecture, the satellite employs automatic gain control to maintain constant output power. Consequently, the end-to-end effective SNR for subchannel~$i$ is determined by the cascaded combination of both links. Following the analysis in~\cite{Hasna2004}, this cascaded SNR is given by
+\end{equation} Under the transparent relay architecture, the satellite employs automatic gain control to maintain constant output power. Consequently, the end-to-end effective SNR for subchannel~$i$ is determined by the cascaded combination of both links. Following the analysis in~\cite{Hasna2003}, this cascaded SNR is given by
 \begin{equation}
 \gamma_{i}^{\mathrm{E2E}}(t) = \frac{\gamma_{i,GS}(t) \cdot \gamma_{i,SU}(t)}{\gamma_{i,GS}(t) + \gamma_{i,SU}(t) + 1}.
 \label{eq:cascaded_snr}
@@ -644,7 +645,7 @@ In the high-SNR regime, \eqref{eq:cascaded_snr} simplifies to $\gamma_{i}^{\math
 \end{equation} In contrast, the access link experiences multipath propagation due to scattering in the UE's local environment, yielding $L_i = L_{i,SU} \geq 1$ resolvable paths. The DD diversity exploited by OTFS modulation therefore arises entirely from the access-link multipath structure. The per-path access-link SNR is
 $
 \gamma_{i,SU,p}(t) = \bar{\gamma}_{i,SU}(t) \cdot P_{i,SU,p} \cdot |g_{i,SU,p}(t)|^2,
-$ where $P_{i,SU,p}$ is the relative power of the $p$th tap and $|g_{i,SU,p}(t)|^2$ is the corresponding small-scale fading power. OTFS modulation enables the receiver to resolve and coherently combine the $L_i$ access-link paths through DD domain processing. With the transparent relay architecture, the multipath components resolved at the receiver share a common amplified feeder-link noise contribution, since the satellite amplifies and forwards the entire received signal including noise. Consequently, after MRC across the $L_i$ resolved access-link paths, the effective end-to-end SNR is given by \cite{Hasna2004}
+$ where $P_{i,SU,p}$ is the relative power of the $p$th tap and $|g_{i,SU,p}(t)|^2$ is the corresponding small-scale fading power. OTFS modulation enables the receiver to resolve and coherently combine the $L_i$ access-link paths through DD domain processing. With the transparent relay architecture, the multipath components resolved at the receiver share a common amplified feeder-link noise contribution, since the satellite amplifies and forwards the entire received signal including noise. Consequently, after MRC across the $L_i$ resolved access-link paths, the effective end-to-end SNR is given by \cite{Hasna2003}
 \begin{equation}
 \gamma_i^{\mathrm{c}}(t) = \frac{\bar{\gamma}_{i,GS}(t) \cdot \gamma_{i,SU}^{\mathrm{MRC}}(t)}{\bar{\gamma}_{i,GS}(t) + \gamma_{i,SU}^{\mathrm{MRC}}(t) + 1},
 \label{eq:combined_snr_full}
@@ -827,7 +828,10 @@ See Appendix~\ref{app:proof_bler_rayleigh}.
 \subsection{Ephemeris-Driven Outage Prediction}
 \label{sec:ephemeris_prediction}
 
-Based on the finite-blocklength BLER analysis developed in Section~\ref{sec:finite blocklength}, this subsection develops an ephemeris-driven prediction framework that exploits the deterministic orbital mechanics of LEO satellites to predict future large‑scale channel conditions and compute reliability scores for each subchannel. In highly dynamic LEO NTN deployments, the reliability of each downlink subchannel is predominantly governed by deterministic geometric factors, including satellite orbital motion, slant-range evolution as characterised by~\eqref{eq:slant_range}, elevation angle dynamics, and the resulting large-scale attenuation specified in~\eqref{eq:total_path_loss}. These geometric quantities can be accurately predicted using satellite ephemeris data, enabling proactive resource allocation decisions. Let $t_k$ denote the start time of the $k$th OTFS frame. Decisions made at frame $k$ target a future frame indexed by $k + \Delta$, with $t_{k+\Delta} \approx t_k + T_{\Delta}$, where $T_{\Delta}$ denotes the total system latency. Using the predicted satellite position derived from ephemeris data and  the estimated UE location, the predictor computes the future elevation  angle $\tilde{\epsilon}_{i,k\ell}[k+\Delta]$ and slant range $\tilde{d}_{i,k\ell}[k+\Delta]$. The predicted large-scale path loss is computed by evaluating each component of the path loss model at the predicted geometry:
+Based on the finite-blocklength BLER analysis developed in Section~\ref{sec:finite blocklength}, this subsection develops an ephemeris-driven prediction framework that exploits the deterministic orbital mechanics of LEO satellites to predict future large‑scale channel conditions and compute reliability scores for each subchannel. In highly dynamic LEO NTN deployments, the reliability of each downlink subchannel is predominantly governed by deterministic geometric factors, including satellite orbital motion, slant-range evolution as characterised by~\eqref{eq:slant_range}, elevation angle dynamics, and the resulting large-scale attenuation specified in~\eqref{eq:total_path_loss}. These geometric quantities can be accurately predicted using satellite ephemeris data, enabling proactive resource allocation decisions. The proposed framework assumes perfect ephemeris knowledge; current LEO constellations 
+provide orbital ephemerides with position accuracies on the order of tens of metres~\cite{3GPP38821,3GPP_TR38811,10902219,montenbruck2008precision}, yielding elevation-angle errors that are negligible relative to the subchannel elevation spread.
+
+Let $t_k$ denote the start time of the $k$th OTFS frame. Decisions made at frame $k$ target a future frame indexed by $k + \Delta$, with $t_{k+\Delta} \approx t_k + T_{\Delta}$, where $T_{\Delta}$ denotes the total system latency. Using the predicted satellite position derived from ephemeris data and  the estimated UE location, the predictor computes the future elevation  angle $\tilde{\epsilon}_{i,k\ell}[k+\Delta]$ and slant range $\tilde{d}_{i,k\ell}[k+\Delta]$. The predicted large-scale path loss is computed by evaluating each component of the path loss model at the predicted geometry:
 \begin{equation}
 \widetilde{\mathrm{PL}}_{i,k\ell,\mathrm{tot}}[k+\Delta] = \widetilde{\mathrm{PL}}_{i,k\ell,\mathrm{FS}}[k+\Delta] + \tilde{\mathcal{L}}_{i,k\ell}^{\mathrm{atm}}[k+\Delta] + \tilde{\mathcal{L}}_{i,k\ell}^{\mathrm{blk}}[k+\Delta],
 \label{eq:predicted_path_loss}
@@ -1199,188 +1203,168 @@ $ where $E^c$ denotes the set of surviving transform-output indices. By Theorem~
 \end{equation}
 and then scaled by the instantaneous subchannel reliability score obtained from the receiver's local channel estimate: $
 \Lambda_i^{(j)} \leftarrow \hat{\eta}_i \cdot \Lambda_i^{(j)},$
-where $\hat{\eta}_i = 1 - \epsilon_i(\hat{\gamma}_i^{\mathrm{E2E}}, n_i, R)$ is evaluated from the receiver-estimated end-to-end SNR $\hat{\gamma}_i^{\mathrm{E2E}}$ using the finite-blocklength error probability of~\eqref{eq:bler_cdf_combined}. This instantaneous per-subchannel reliability estimate is computed locally at the receiver using only its own channel estimation results. The demapper output is a vector of $N$ soft LLRs corresponding to the polar-coded bits, which are passed to a single successive cancellation list (SCL) polar decoder that jointly recovers all $K$ information bits in one forward pass. The combined polar–diversity generator $G_{\mathrm{PD}} = G_{\mathrm{POL}} \otimes G_{\mathrm{DIV}}$, detailed in Section~\ref{subsec:polar_diversity}, preserves the algebraic rank guarantees throughout the decoding process without requiring bit-level interleaving.
+where $\hat{\eta}_i = 1 - \epsilon_i(\hat{\gamma}_i^{\mathrm{E2E}}, n_i, R)$ is evaluated from the receiver-estimated end-to-end SNR $\hat{\gamma}_i^{\mathrm{E2E}}$ using the finite-blocklength error probability of~\eqref{eq:bler_cdf_combined}. This instantaneous per-subchannel reliability estimate is computed locally at the receiver using only its own channel estimation results. The demapper output is a vector of $N$ soft LLRs corresponding to the polar-coded bits, which are passed to a single successive cancellation list (SCL) polar decoder that jointly recovers all $K$ information bits in one forward pass. The combined polar–diversity generator $G_{\mathrm{PD}} = G_{\mathrm{POL}} \otimes G_{\mathrm{DIV}}$  preserves the algebraic rank guarantees throughout the decoding process without requiring bit-level interleaving.
 \subsection{Latency and Reliability Analysis of Diversity Transform}
 \label{sec:latency_reliability}
 
-Given $n$ parallel subchannels each with per-link BLER 
-$\epsilon_i^{\mathrm{E2E}}$ from Theorem~\ref{thm:fbl_bler}, and a 
-diversity transform constructed from an 
-$[n, k_c, d_{\min}]_{\mathbb{F}_{2^m}}$ MDS code with 
-$d_{\min} = n - k_c + 1$, Theorem~\ref{thm:block_mds} guarantees 
-perfect recovery whenever the number of failed subchannels does not 
-exceed $f_{\max} = n - k_c$. Let $\mathcal{F}_i$ denote the event 
-that subchannel $i$ fails, and let 
-$F = \sum_{i=1}^n \mathbf{1}_{\mathcal{F}_i}$ denote the total 
+Given $n$ parallel subchannels each with per-link BLER
+$\epsilon_i^{\mathrm{E2E}}$ from Theorem~\ref{thm:fbl_bler}, and a
+diversity transform constructed from an
+$[n, k_c, d_{\min}]_{\mathbb{F}_{2^m}}$ MDS code with
+$d_{\min} = n - k_c + 1$, Theorem~\ref{thm:block_mds} guarantees
+perfect recovery whenever the number of failed subchannels does not
+exceed $f_{\max} = n - k_c$. Let $\mathcal{F}_i$ denote the event
+that subchannel $i$ fails, and let
+$F = \sum_{i=1}^n \mathbf{1}_{\mathcal{F}_i}$ denote the total
 number of failed subchannels.
 
-The overall system BLER comprises two distinct failure events. 
-The first is an irrecoverable erasure event, where the number of 
-failed subchannels exceeds the maximum tolerable failure threshold, 
-i.e., $F > f_{\max}$, rendering the diversity transform unable to 
-recover the transmitted data regardless of the FEC decoder 
-performance. The second is a recoverable erasure event, where a 
-sufficient number of subchannels survive to meet the MDS recovery threshold, but FEC decoding fails on at least one of the surviving subchannels. 
-These two events are mutually exclusive and their probabilities are 
-of fundamentally different orders: the FEC decoding failure 
-probability is of order $O(\epsilon_i^{\mathrm{E2E}})$, whilst the 
-irrecoverable erasure event probability is of order 
-$O((\epsilon_i^{\mathrm{E2E}})^{d_{\min}})$ with $d_{\min} \geq 2$. 
-Consequently, in the high-SNR regime where 
-$\epsilon_i^{\mathrm{E2E}} \ll 1$, the erasure event dominates the 
-system BLER and the FEC error term becomes negligible by comparison. 
-This observation motivates the union bound applied 
-in~\eqref{eq:union_bound} and justifies the approximation 
-in~\eqref{eq:sys_bler_approx_final}. The overall system BLER is therefore expressed as
+The overall system BLER comprises two distinct failure events.
+The first is an irrecoverable erasure event, where the number of
+failed subchannels exceeds the maximum tolerable failure threshold,
+i.e., $F > f_{\max}$, rendering the diversity transform unable to
+recover the transmitted data regardless of the FEC decoder
+performance. The second is a recoverable erasure event, where a
+sufficient number of subchannels survive to meet the MDS recovery
+threshold, but FEC decoding fails on at least one of the surviving
+subchannels. These two events are mutually exclusive.
+
+The overall system BLER is therefore expressed as
 \begin{equation}
 \begin{aligned}
 \epsilon_{\mathrm{sys}} &= \Pr\!\left(F > f_{\max}\right) \\[-2pt]
-&\quad + \sum_{J\subseteq[n]:|J|\geq k_c} \Pr\!\left(\mathcal{J}(E)=J\right) \Bigl(1 - \prod_{i\in J}(1-\epsilon_i)\Bigr),
+&\quad + \sum_{J\subseteq[n]:|J|\geq k_c}
+\Pr\!\left(\mathcal{J}(E)=J\right)
+\Bigl(1 - \prod_{i\in J}(1-\epsilon_i)\Bigr),
 \label{eq:sys_bler_complete}
 \end{aligned}
 \end{equation}
-where the sum is taken over all realisations of the surviving 
-subchannel set $\mathcal{J}(E)$ with $|\mathcal{J}(E)| \geq k_c$, 
-and $1 - \prod_{i \in \mathcal{J}}(1-\epsilon_i^{\mathrm{E2E}})$ 
-is the probability that at least one FEC decoder fails amongst the 
-surviving subchannels. Applying the union bound to the product 
-term gives
+where the sum is taken over all realisations of the surviving
+subchannel set $\mathcal{J}(E)$ with $|\mathcal{J}(E)| \geq k_c$,
+and $1 - \prod_{i \in \mathcal{J}}(1-\epsilon_i^{\mathrm{E2E}})$
+is the probability that at least one FEC decoder fails amongst the
+surviving subchannels. Since the FEC failure probability is of order
+$O(\epsilon_i^{\mathrm{E2E}})$ whilst the irrecoverable erasure
+probability scales as
+$O\bigl((\epsilon_i^{\mathrm{E2E}})^{d_{\min}}\bigr)$ with
+$d_{\min} \geq 2$, the second term
+in~\eqref{eq:sys_bler_complete} is negligible in the high-SNR
+regime. This yields the approximation formalised in the following
+corollary.
+
+\begin{corollary}[System BLER Under Diversity Transform]
+\label{cor:sys_bler_poisson}
+For a diversity transform constructed from an
+$[n, k_c, d_{\min}]_{\mathbb{F}_{2^m}}$ MDS code with
+heterogeneous per subchannel BLERs
+$\{\epsilon_i^{\mathrm{E2E}}\}_{i=1}^n$, the system BLER
+in the high-SNR regime satisfies
 \begin{equation}
-1 - \prod_{i \in \mathcal{J}}
-(1-\epsilon_i^{\mathrm{E2E}}) 
-\leq \sum_{i \in \mathcal{J}} \epsilon_i^{\mathrm{E2E}},
-\label{eq:union_bound}
-\end{equation}
-confirming that the residual FEC error is of order 
-$O(\epsilon_i^{\mathrm{E2E}})$, whilst the erasure event 
-probability is of order 
-$O\bigl((\epsilon_i^{\mathrm{E2E}})^{d_{\min}}\bigr)$ 
-with $d_{\min} \geq 2$. Since the erasure event dominates 
-in the high-SNR regime, the system BLER is well approximated by
-\begin{equation}
-\epsilon_{\mathrm{sys}} \approx 
-\Pr\!\left(F > f_{\max}\right) 
-= \sum_{j=f_{\max}+1}^{n} P(F = j),
+\epsilon_{\mathrm{sys}} \approx
+\sum_{j=f_{\max}+1}^{n} P(F=j),
 \label{eq:sys_bler_approx_final}
 \end{equation}
-where $P(F = j)$ is computed exactly via the recursive formula
+where $P(F=j)$ is given by the Poisson binomial
+recursion
 \begin{IEEEeqnarray}{rCl}
-P(F = k) &=& P(F_{n-1} = k)(1-\epsilon_n^{\mathrm{E2E}}) 
+P(F = k) &=& P(F_{n-1} = k)(1-\epsilon_n^{\mathrm{E2E}})
 \nonumber\\[2pt]
 &&+\; P(F_{n-1} = k-1)\,\epsilon_n^{\mathrm{E2E}},
 \label{eq:poisson_binom_recursive}
 \end{IEEEeqnarray}
-with $P(F_0 = 0) = 1$. This recursive computation accounts 
-for the heterogeneous per-link BLERs 
-$\{\epsilon_i^{\mathrm{E2E}}\}_{i=1}^n$ arising from the 
-varying elevation angles and atmospheric conditions of the 
-LEO NTN system.
-
-\begin{corollary}[System BLER Under Diversity Transform]
-\label{cor:sys_bler_poisson}
-For a diversity transform constructed from an 
-$[n, k_c, d_{\min}]_{\mathbb{F}_{2^m}}$ MDS code with 
-heterogeneous per subchannel BLERs 
-$\{\epsilon_i^{\mathrm{E2E}}\}_{i=1}^n$, the system BLER 
-in the high-SNR regime satisfies
-\begin{equation}
-\epsilon_{\mathrm{sys}} \approx 
-\sum_{j=f_{\max}+1}^{n} P(F=j),
-\label{eq:sys_bler_corollary}
-\end{equation}
-where $P(F=j)$ is given by the Poisson binomial 
-recursion~\eqref{eq:poisson_binom_recursive}, and 
-$\epsilon_{\mathrm{sys}}$ decreases monotonically as 
-$d_{\min}$ increases for fixed per subchannel BLERs 
+with $P(F_0 = 0) = 1$, and
+$\epsilon_{\mathrm{sys}}$ decreases monotonically as
+$d_{\min}$ increases for fixed per subchannel BLERs
 $\{\epsilon_i^{\mathrm{E2E}}\}_{i=1}^n$.
 \end{corollary}
 
 \begin{IEEEproof}
 See Appendix~\ref{app:proof_sys_bler_poisson}.
 \end{IEEEproof}
-
-We obtain the per subchannel BLER required to meet a system 
-target $\epsilon_{\mathrm{sys}}^{\mathrm{target}}$ by 
-inverting~\eqref{eq:sys_bler_approx_final} numerically. The 
-resulting relaxed target $\epsilon^*$ satisfies 
-$\epsilon^* \gg \epsilon_{\mathrm{sys}}^{\mathrm{target}}$, 
-confirming that each subchannel can tolerate a substantially 
-relaxed per-link error rate whilst still meeting the system 
+It is noted that~\eqref{eq:sys_bler_approx_final} assumes  statistically independent subchannel failures, while the algebraic recovery guarantee of Theorem~\ref{thm:block_mds} holds irrespective of the correlation structure. We obtain the per subchannel BLER required to meet a system
+target $\epsilon_{\mathrm{sys}}^{\mathrm{target}}$ by
+inverting~\eqref{eq:sys_bler_approx_final} numerically. The
+resulting relaxed target $\epsilon^*$ satisfies
+$\epsilon^* \gg \epsilon_{\mathrm{sys}}^{\mathrm{target}}$,
+confirming that each subchannel can tolerate a substantially
+relaxed per-link error rate whilst still meeting the system
 reliability requirement.
 
-Regarding latency, the end-to-end delay comprises three 
-components: $ T_{\Delta} = T_{\mathrm{prop}} + T_{\mathrm{frame}} 
-+ T_{\mathrm{proc}},$ where $T_{\mathrm{prop}}$ is the one-way propagation delay, 
-$T_{\mathrm{frame}} = n_c/(M_{\mathrm{D}}\Delta f)$ is the OTFS 
-frame duration with $n_c = N_{\mathrm{D}} M_{\mathrm{D}}$ the 
-blocklength, and $T_{\mathrm{proc}}$ represents the processing 
-delay at the gateway, satellite, and user equipment, which is 
-negligible relative to propagation delay. Inverting the normal 
-approximation in~\eqref{eq:normal_approx}, the minimum blocklength 
-required to achieve a target BLER $\epsilon^{\mathrm{target}}$ at 
+Regarding latency, the end-to-end delay comprises three
+components: $ T_{\Delta} = T_{\mathrm{prop}} + T_{\mathrm{frame}}
++ T_{\mathrm{proc}},$ where $T_{\mathrm{prop}}$ is the one-way propagation delay,
+$T_{\mathrm{frame}} = n_c/(M_{\mathrm{D}}\Delta f)$ is the OTFS
+frame duration with $n_c = N_{\mathrm{D}} M_{\mathrm{D}}$ the
+blocklength, and $T_{\mathrm{proc}}$ represents the processing
+delay at the gateway, satellite, and user equipment, which is
+negligible relative to propagation delay. Inverting the normal
+approximation in~\eqref{eq:normal_approx}, the minimum blocklength
+required to achieve a target BLER $\epsilon^{\mathrm{target}}$ at
 SNR $\gamma$ and coding rate $R_c$ is
 \begin{equation}
-n_c^{*}\!\left(\epsilon^{\mathrm{target}}, \gamma\right) 
+n_c^{*}\!\left(\epsilon^{\mathrm{target}}, \gamma\right)
 \approx \frac{V(\gamma)\bigl[Q^{-1}
 (\epsilon^{\mathrm{target}})\bigr]^2}
 {(C(\gamma) - R_c)^2},
 \label{eq:min_blocklength}
 \end{equation}
-where $C(\gamma) = \log_2(1+\gamma)$ is the instantaneous 
+where $C(\gamma) = \log_2(1+\gamma)$ is the instantaneous
 capacity and $V(\gamma) = \bigl(1-(1+\gamma)^{-2}\bigr)
-(\log_2 e)^2$ is the channel dispersion. Since 
-$\epsilon^* \gg \epsilon_{\mathrm{sys}}^{\mathrm{target}}$ 
-and $Q^{-1}(\cdot)$ is strictly decreasing, the minimum 
-blocklength required by the diversity transform system 
+(\log_2 e)^2$ is the channel dispersion. Since
+$\epsilon^* \gg \epsilon_{\mathrm{sys}}^{\mathrm{target}}$
+and $Q^{-1}(\cdot)$ is strictly decreasing, the minimum
+blocklength required by the diversity transform system
 satisfies
 \begin{equation}
-n_c^{*}\!\left(\epsilon^*, \gamma\right) 
+n_c^{*}\!\left(\epsilon^*, \gamma\right)
 \approx \frac{V(\gamma)\bigl[Q^{-1}(\epsilon^*)\bigr]^2}
-{(C(\gamma) - R_c)^2} 
-< n_c^{*}\!\left(\epsilon_{\mathrm{sys}}^{\mathrm{target}}, 
+{(C(\gamma) - R_c)^2}
+< n_c^{*}\!\left(\epsilon_{\mathrm{sys}}^{\mathrm{target}},
 \gamma\right).
 \label{eq:min_blocklength_div}
 \end{equation}
 
 \begin{corollary}[Latency Under Diversity Transform]
 \label{cor:latency_reduction}
-For any $d_{\min} \geq 2$ and target system BLER 
-$\epsilon_{\mathrm{sys}}^{\mathrm{target}} \in (0,1)$, the 
-minimum blocklength required by the diversity transform system 
+For any $d_{\min} \geq 2$ and target system BLER
+$\epsilon_{\mathrm{sys}}^{\mathrm{target}} \in (0,1)$, the
+minimum blocklength required by the diversity transform system
 satisfies
 \begin{equation}
-n_c^{*}\!\left(\epsilon^*, \gamma\right) < 
-n_c^{*}\!\left(\epsilon_{\mathrm{sys}}^{\mathrm{target}}, 
+n_c^{*}\!\left(\epsilon^*, \gamma\right) <
+n_c^{*}\!\left(\epsilon_{\mathrm{sys}}^{\mathrm{target}},
 \gamma\right),
 \label{eq:latency_reduction}
 \end{equation}
-and decreases monotonically as the number of subchannels $n$ 
+and decreases monotonically as the number of subchannels $n$
 or the minimum distance $d_{\min}$ increases.
 \end{corollary}
 
 \begin{IEEEproof}
 See Appendix~\ref{app:proof_latency_reduction}.
 \end{IEEEproof}
-
-Since all $n$ subchannels are transmitted simultaneously within 
-a single OTFS frame, the total latency $T_{\Delta}$ remains 
-independent of $n$. The algebraic recovery guarantee of 
-Theorem~\ref{thm:block_mds} ensures correct decoding within a 
-single OTFS frame with no feedback or retransmission overhead. 
-Furthermore, the relaxed per subchannel target $\epsilon^*$ 
-permits a shorter blocklength via~\eqref{eq:min_blocklength_div}, 
-directly reducing the frame duration $T_{\mathrm{frame}}$ and 
+Since all $n$ subchannels are transmitted simultaneously within
+a single OTFS frame, the total latency $T_{\Delta}$ remains
+independent of $n$. The algebraic recovery guarantee of
+Theorem~\ref{thm:block_mds} ensures correct decoding within a
+single OTFS frame with no feedback or retransmission overhead.
+Furthermore, the relaxed per subchannel target $\epsilon^*$
+permits a shorter blocklength via~\eqref{eq:min_blocklength_div},
+directly reducing the frame duration $T_{\mathrm{frame}}$ and
 consequently the total system latency $T_{\Delta}$.
-
 \section{Numerical Results}
 \label{sec:results}
-
-In this section, the proposed LEO SatCom system architecture with the diversity transform is evaluated through Monte Carlo (MC) simulations.
-Unless mentioned, Table~\ref{tab:sim_params} summarises the key parameters. The diversity
-transform is constructed from a $[6, 4, 3]_{2^3}$ Reed--Solomon code via
-Algorithm~\ref{alg:div_transform_construction}, guaranteeing full rank
-recovery under up to $d_{\min} - 1 = 2$ simultaneous subchannel erasures
-(Theorem~\ref{thm:block_mds}). 
+In this section, the proposed LEO SatCom system architecture with
+  the diversity transform is evaluated through Monte Carlo (MC)
+  simulations. Unless otherwise stated, Table~\ref{tab:sim_params}
+  summarises the key parameters. The diversity transform is
+  constructed from a $[6, 4, 3]_{2^3}$ Reed--Solomon code via
+  Algorithm~\ref{alg:div_transform_construction}, guaranteeing
+  full rank recovery under up to $d_{\min} - 1 = 2$ simultaneous
+  subchannel erasures (Theorem~\ref{thm:block_mds}). Under these
+  parameters, the feeder-link SNR exceeds the access-link SNR by
+  more than 39~dB across the operating range, validating the
+  dominant feeder-link approximation
+  $\gamma_{\mathrm{GS}} \gg \gamma_{\mathrm{SU}}$.
 
 \begin{table}[t]
 \centering
@@ -1416,8 +1400,8 @@ Number of subchannels $n_{\mathrm{s}}$ & 6 \\
 \end{tabular}
 \end{table}
 
-Fig.~\ref{fig:prop1_validation} validates Proposition~\ref{prop:bler_approx} by comparing the closed-form BLER approximation with MC simulation  under dominant-LOS conditions across four blocklengths versus the average access-link SNR $\bar{\gamma}_{\mathrm{SU}}$ at coding rate $R_c = 0.75$. The closed-form expression closely matches the simulation results across the operating range. As $n_c$ increases, the BLER curves shift leftward and become steeper, confirming that longer codes require lower SNR to achieve a given reliability level. At short blocklengths, the finite‑blocklength penalty results in a noticeable increase in BLER, consistent with the channel dispersion term in~\eqref{eq:normal_approx}. For instance, at a target BLER of
-  $10^{-2}$, increasing the blocklength from $n_c = 64$ to $1024$ yields an SNR gain of approximately 2~dB, reflecting the diminishing penalty as
+Fig.~\ref{fig:prop1_validation} validates Proposition~\ref{prop:bler_approx} by comparing the closed-form BLER approximation with MC simulation  under dominant-LOS conditions across different subchannel blocklengths $n_{c}$ versus the average access-link SNR $\bar{\gamma}_{\mathrm{SU}}$ at coding rate $R_c = 0.75$. The closed-form expression closely matches the simulation results across the operating range. As $n_c$ increases, the BLER curves shift leftward and become steeper, confirming that longer codes require lower SNR to achieve a given reliability level. At short blocklengths, the finite‑blocklength penalty results in a noticeable increase in BLER, consistent with the channel dispersion term in~\eqref{eq:normal_approx}. For instance, at a target BLER of
+  $10^{-2}$, increasing the blocklength from $n_c = 64$ to $1024$ yields an SNR gain of approximately 1~dB, reflecting the diminishing penalty as
   blocklength approaches the asymptotic regime. This confirms that the piecewise approximation in~\eqref{eq:piecewise_approx} provides a tractable yet
   accurate characterisation for system-level design.
 
@@ -1429,7 +1413,7 @@ Fig.~\ref{fig:prop1_validation} validates Proposition~\ref{prop:bler_approx} by 
     \label{fig:prop1_validation}
 \end{figure}
 
-Fig.~\ref{fig:prop2_diversity} verifies Proposition~\ref{prop:bler_high_snr} and Corollary~\ref{cor:bler_rayleigh} by plotting the subchannel BLER under pure Rayleigh fading for different DD diversity orders $L$. Three curve families are shown: the closed-form expression from Corollary~\ref{cor:bler_rayleigh}, the high-SNR asymptotic form from Proposition~\ref{prop:bler_high_snr}, and MC simulation. At moderate-to-high SNR, the asymptotic and closed-form curves converge and both match the MC results closely, confirming that the analytical framework accurately captures the diversity behaviour of the multipath channel model in~\eqref{eq:combined_snr_final}. At low SNR, the high-SNR asymptotic form deviates from the MC and closed-form results because the leading-term approximation of the regularised incomplete gamma function requires $\hat{\gamma}_{i,\mathrm{NLOS}} \gg \psi_i$, a condition that is not satisfied in the low-SNR regime.
+Fig.~\ref{fig:prop2_diversity} verifies Proposition~\ref{prop:bler_high_snr} and Corollary~\ref{cor:bler_rayleigh} by plotting the subchannel BLER under pure Rayleigh fading for different DD diversity orders $L$. Three curve families are shown: the closed-form expression from Corollary~\ref{cor:bler_rayleigh}, the high-SNR asymptotic form from Proposition~\ref{prop:bler_high_snr}, and MC simulation. At moderate-to-high SNR, the asymptotic and closed-form curves converge and both match the MC results closely, confirming that the analytical framework accurately captures the diversity behaviour of the multipath channel model in~\eqref{eq:combined_snr_final}. At low SNR, the high-SNR asymptotic form deviates from the MC and closed-form results because the leading-term approximation of the regularised incomplete gamma function requires $\hat{\gamma}_{i,\mathrm{NLOS}} \gg \psi_i$, a condition that is not satisfied in the low-SNR regime. 
 
 
 
@@ -1513,7 +1497,7 @@ constellation.
 
 Fig.~\ref{fig:otfs_vs_ofdm} compares the BLER performance of OTFS- and OFDM-based schemes as a function of the normalized Doppler shift $f_D / \Delta f$. OTFS-based schemes maintain nearly constant BLER across the evaluated range.  In contrast, OFDM-based schemes exhibit increased BLER at higher normalized Doppler values due to inter-carrier interference (ICI). At the highest normalized Doppler shift tested, the BLER of the OFDM scheme with diversity transform is significantly higher than that of the corresponding OTFS scheme. At zero Doppler, the two waveforms perform comparably since ICI is absent; however, this equivalence disappears rapidly as Doppler increases and the OFDM subcarrier orthogonality is lost. The OTFS baselines without diversity also
 remain stable, whereas the corresponding OFDM baselines degrade
-noticeably. In addition, the standalone polar code curves with and without interleaving overlap because interleaving only permutes bits within a single subchannel and therefore cannot recover information lost when an entire subchannel is blocked. These results confirm that DD domain processing with OTFS, combined with the proposed diversity transform, is well suited to the high Doppler shifts characteristic of LEO satellite links.
+noticeably. In addition, the standalone polar code curves with and without interleaving overlap because interleaving only permutes bits within a single subchannel and therefore cannot recover information lost when an entire subchannel is blocked. These results confirm that DD domain processing with OTFS, combined with the proposed diversity transform, is well suited to the high Doppler shifts characteristic of LEO satellite links. Although the analysis assumes integer Doppler indices, and fractional Doppler shifts may reduce the effective DD diversity order, the subchannel-level recovery guarantee of Theorem~\ref{thm:block_mds} is preserved.
 
 \begin{figure}[t]
     \centering
@@ -1568,7 +1552,7 @@ The central theoretical contribution is established in
 Theorem~\ref{thm:block_mds}, which shows that a binary diversity 
 transform derived from an MDS code guarantees full-rank recovery 
 whenever the number of surviving subchannels is at least the code 
-dimension. The finite-blocklength BLER analysis in Theorem~\ref{thm:fbl_bler} and the latency reduction proved in Corollary~\ref{cor:latency_reduction} are supported by the simulation results in Figs.~\ref{fig:bler_vs_blocklength}, \ref{fig:bler_vs_blockage}, and~\ref{fig:latency_comparison}. Collectively, these results demonstrate that the proposed framework enables reliable and low-latency SatCom without requiring CSI feedback, while outperforming conventional baselines. The primary practical implication is that spatial diversity across co‑visible LEO satellites can replace retransmission‑based temporal diversity, enabling single‑shot reliable transmission. By relaxing the per-subchannel  BLER requirement, the proposed architecture enables a single OTFS frame  to meet the target system reliability while remaining resilient to correlated outages and high Doppler shifts.
+dimension. The finite-blocklength BLER analysis in Theorem~\ref{thm:fbl_bler} and the latency reduction proved in Corollary~\ref{cor:latency_reduction} are supported by the simulation results in Figs.~\ref{fig:bler_vs_blocklength}, \ref{fig:bler_vs_blockage}, and~\ref{fig:latency_comparison}. Collectively, these results demonstrate that the proposed framework enables reliable and low-latency SatCom without requiring CSI feedback or retransmissions, while outperforming conventional baselines. The primary practical implication is that spatial diversity across co‑visible LEO satellites can replace retransmission‑based temporal diversity, enabling single‑shot reliable transmission. By relaxing the per-subchannel  BLER requirement, the proposed architecture enables a single OTFS frame  to meet the target system reliability while remaining resilient to correlated outages and high Doppler shifts.
 
 %======================================================================
 %======================================================================
@@ -1674,23 +1658,40 @@ which is~\eqref{eq:bler_rayleigh_high_snr}, confirming DD diversity order $L_i$.
 \label{app:proof_block_mds}
 The surviving columns indexed by $\mathcal{J}(E)$ define the restricted $\mathbb{F}_{2^m}$-linear map $T_{\mathcal{J}(E)}:\mathbb{F}_{2^m}^{k_{\mathrm{c}}}\rightarrow\mathbb{F}_{2^m}^{|\mathcal{J}(E)|}$ with $[T_{\mathcal{J}(E)}]_{:,j}=[G_{\mathrm{MDS}}]_{:,j}$ for $j\in\mathcal{J}(E)$. Since $G_{\mathrm{MDS}}$ is MDS, any $k_{\mathrm{c}}$ columns are linearly independent over $\mathbb{F}_{2^m}$. Hence, $|\mathcal{J}(E)|\geq k_{\mathrm{c}}$ implies $\ker(T_{\mathcal{J}(E)})=\{\mathbf{0}\}$, i.e., $T_{\mathcal{J}(E)}$ is injective. Applying the faithful representation $\varphi$ produces the $\mathbb{F}_2$-linear map $\Phi_{\mathcal{J}(E)}:\mathbb{F}_2^{k_{\mathrm{c}} m}\rightarrow\mathbb{F}_2^{m|\mathcal{J}(E)|}$, whose matrix is $G_{\mathrm{DIV}}(E^c)$. Since $\varphi$ is a ring homomorphism satisfying $\varphi(ab)=\varphi(a)\varphi(b)$ and $\ker(\varphi)=\{0\}$, it preserves injectivity, giving $\ker\!\left(\Phi_{\mathcal{J}(E)}\right)=\{\mathbf{0}\}\implies\mathrm{rank}\!\left(G_{\mathrm{DIV}}(E^c)\right)=k_{\mathrm{c}}m=\varrho$, establishing the full rank condition and hence perfect recoverability of all $\varrho$ encoded subwords from the surviving transform outputs.
 
-\section{Proof of Corollary~\ref{cor:sys_bler_poisson}}
-\label{app:proof_sys_bler_poisson}
-From~\eqref{eq:sys_bler_complete}, the complete system BLER satisfies
-\begin{IEEEeqnarray}{rCl}
-\epsilon_{\mathrm{sys}}&=&\Pr\!\left(F>f_{\max}\right)\nonumber\\
-&&+\;\sum_{\mathcal{J}\,:\,|\mathcal{J}|\geq k_c}\Pr\!\left(\mathcal{J}(E)=\mathcal{J}\right)\Bigl(1-\prod_{i\in\mathcal{J}}(1-\epsilon_i^{\mathrm{E2E}})\Bigr).
-\nonumber
-\end{IEEEeqnarray}
-Applying the union bound~\eqref{eq:union_bound} to the residual FEC term gives
-\begin{equation}
-1-\prod_{i\in\mathcal{J}}(1-\epsilon_i^{\mathrm{E2E}})\leq\sum_{i\in\mathcal{J}}\epsilon_i^{\mathrm{E2E}}=O\!\left(\epsilon_i^{\mathrm{E2E}}\right),
-\end{equation}
-while the erasure event satisfies
-\begin{equation}
-\Pr\!\left(F>f_{\max}\right)=\sum_{j=f_{\max}+1}^{n}P(F=j)=O\!\left(\left(\epsilon_i^{\mathrm{E2E}}\right)^{d_{\min}}\right).
-\end{equation}
-Since $d_{\min}\geq2$, in the high-SNR regime where $\epsilon_i^{\mathrm{E2E}}\ll1$ for all $i$, the residual FEC term is negligible relative to the erasure event probability, yielding~\eqref{eq:sys_bler_corollary}. To establish monotonicity, increasing $d_{\min}$ by one increases $f_{\max}=n-k_c$ by one, shifting the lower summation limit in~\eqref{eq:sys_bler_corollary} from $f_{\max}+1$ to $f_{\max}+2$ and removing the term $P(F=f_{\max}+1)\geq0$ from the sum. Since $P(F=j)\geq0$ for all $j$, the sum is non-increasing in $d_{\min}$, and strictly decreasing whenever $P(F=f_{\max}+1)>0$, which holds for any $\epsilon_i^{\mathrm{E2E}}>0$.
+ \section{Proof of Corollary~\ref{cor:sys_bler_poisson}}
+  \label{app:proof_sys_bler_poisson}
+  From~\eqref{eq:sys_bler_complete}, the complete system BLER satisfies
+  \begin{IEEEeqnarray}{rCl}
+  \epsilon_{\mathrm{sys}}&=&\Pr\!\left(F>f_{\max}\right)\nonumber\\
+  &&+\;\sum_{\mathcal{J}\,:\,|\mathcal{J}|\geq k_c}
+  \Pr\!\left(\mathcal{J}(E)=\mathcal{J}\right)
+  \Bigl(1-\prod_{i\in\mathcal{J}}
+  (1-\epsilon_i^{\mathrm{E2E}})\Bigr).
+  \nonumber
+  \end{IEEEeqnarray}
+  Applying the union bound to the residual FEC term gives
+  \begin{equation}
+  1-\prod_{i\in\mathcal{J}}(1-\epsilon_i^{\mathrm{E2E}})
+  \leq\sum_{i\in\mathcal{J}}\epsilon_i^{\mathrm{E2E}}
+  =O\!\left(\epsilon_i^{\mathrm{E2E}}\right),
+  \end{equation}
+  while the erasure event satisfies
+  \begin{equation}
+  \Pr\!\left(F>f_{\max}\right)=\sum_{j=f_{\max}+1}^{n}P(F=j)
+  =O\!\left(\left(\epsilon_i^{\mathrm{E2E}}\right)^{d_{\min}}\right).
+  \end{equation}
+  Since $d_{\min}\geq2$, in the high-SNR regime where
+  $\epsilon_i^{\mathrm{E2E}}\ll1$ for all $i$, the residual FEC term
+  is negligible relative to the erasure event probability,
+  yielding~\eqref{eq:sys_bler_approx_final}. To establish monotonicity,
+  increasing $d_{\min}$ by one increases $f_{\max}=n-k_c$ by one,
+  shifting the lower summation limit
+  in~\eqref{eq:sys_bler_approx_final} from $f_{\max}+1$ to
+  $f_{\max}+2$ and removing the term $P(F=f_{\max}+1)\geq0$ from
+  the sum. Since $P(F=j)\geq0$ for all $j$, the sum is non-increasing
+  in $d_{\min}$, and strictly decreasing whenever
+  $P(F=f_{\max}+1)>0$, which holds for any
+  $\epsilon_i^{\mathrm{E2E}}>0$.
 
 \section{Proof of Corollary~\ref{cor:latency_reduction}}
 \label{app:proof_latency_reduction}
