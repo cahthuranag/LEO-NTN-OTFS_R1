@@ -129,6 +129,34 @@ def p_block_3gpp(elevation_angles_deg, p_block_min=0.05):
     p_block = np.maximum(p_block, p_block_min)
     return p_block
 
+
+def correlated_blockage_mask(p_block_sub, rho_blk, n_subchannels, rng):
+    """Gaussian copula correlated blockage (Paper Eq. corr_matrix_blk).
+
+    B_i = 1{Phi(Z_i) <= P_LOS_i}  where  Z ~ N(0, R_blk),
+    [R_blk]_{ij} = rho_blk for i!=j, 1 on diagonal.
+    rho_blk=0 recovers independent blockage.
+    """
+    from scipy.stats import norm
+    p_block_arr = np.broadcast_to(np.asarray(p_block_sub, dtype=float),
+                                  (n_subchannels,))
+    if rho_blk <= 0.0:
+        return rng.random(n_subchannels) < p_block_arr
+
+    if rho_blk >= 1.0:
+        common = rng.random() < np.mean(p_block_arr)
+        return np.full(n_subchannels, common)
+
+    R = np.full((n_subchannels, n_subchannels), rho_blk)
+    np.fill_diagonal(R, 1.0)
+    L = np.linalg.cholesky(R)
+    z_indep = rng.normal(size=n_subchannels)
+    z_corr = L @ z_indep
+    u = norm.cdf(z_corr)
+    blocked = u < p_block_arr
+    return blocked
+
+
 # Multipath TDL-D profile
 L_TAPS = 2
 TAP_POWERS_DB = np.array([0.0, -3.0])
@@ -547,7 +575,8 @@ def per_subchannel_eta_ephemeris(elevation_angles_deg, P_total_dBW,
 # ============================================================================
 
 def generate_multipath_per_subchannel(gamma_avg_SU, gamma_gs, n_subchannels,
-                                      K_rice, p_block_sub, shadow_loss_dB, rng):
+                                      K_rice, p_block_sub, shadow_loss_dB, rng,
+                                      rho_blk=0.0):
     """Generate per-subchannel SNR with fading, blockage, and shadow fading.
 
     Implements the paper's Eq. (18) blockage/shadowing model:
@@ -574,7 +603,8 @@ def generate_multipath_per_subchannel(gamma_avg_SU, gamma_gs, n_subchannels,
         gamma_mrc[j] = gamma_su_arr[j] * np.sum(TAP_POWERS_LIN * fading_power)
 
     # Blockage and shadow fading — Paper Eq. (18)
-    blocked_mask = rng.random(n_subchannels) < p_block_sub
+    blocked_mask = correlated_blockage_mask(p_block_sub, rho_blk,
+                                            n_subchannels, rng)
     mu_sh_dB = ENV_PARAMS.mu_sh_dB      # 3.0 dB mean shadowing margin
     sigma_sh_dB = ENV_PARAMS.sigma_sh_dB  # 4.0 dB shadow fading std
     for j in range(n_subchannels):
@@ -593,7 +623,7 @@ def generate_multipath_per_subchannel(gamma_avg_SU, gamma_gs, n_subchannels,
 
 def generate_dd_channel(gamma_avg_SU, gamma_gs, n_subchannels, K_rice,
                         p_block_sub, shadow_loss_dB, rng,
-                        doppler_bins=None):
+                        doppler_bins=None, rho_blk=0.0):
     """
     Generate DD-domain channel. doppler_bins controls tap Doppler indices;
     defaults to [0, 1] if not provided.
@@ -640,7 +670,8 @@ def generate_dd_channel(gamma_avg_SU, gamma_gs, n_subchannels, K_rice,
         gamma_mrc[j] = gamma_su_arr[j] * np.mean(np.abs(h_vals)**2)
 
     # Blockage and shadow fading — Paper Eq. (18)
-    blocked_mask = rng.random(n_subchannels) < p_block_sub
+    blocked_mask = correlated_blockage_mask(p_block_sub, rho_blk,
+                                            n_subchannels, rng)
     mu_sh_dB = ENV_PARAMS.mu_sh_dB      # 3.0 dB mean shadowing margin
     sigma_sh_dB = ENV_PARAMS.sigma_sh_dB  # 4.0 dB shadow fading std
     for j in range(n_subchannels):
@@ -700,7 +731,8 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
                                               h_dd, noise_var,
                                               gamma_e2e_per_sub,
                                               erased_mask, eta, rng,
-                                              blocked_mask=None):
+                                              blocked_mask=None,
+                                              h_dd_eq=None):
     """Diversity-transform OTFS path with QPSK and post-MMSE SNR.
 
     Signal chain (paper-aligned):
@@ -708,6 +740,10 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
       -> DDChannel (access-link noise only) -> MMSE equalize
       -> QPSK soft demod (post-MMSE SNR) -> eta-scaled LLRs -> MAP demapper
     No additional noise injection (paper Eq. 27).
+
+    h_dd_eq: optional separate channel estimate for MMSE equalization.
+             When provided, h_dd is used for transmission and h_dd_eq
+             for equalization (models CSI mismatch / fractional Doppler).
     """
     N = len(coded_bits)
     N_D = OTFS_PARAMS.N_D
@@ -733,7 +769,8 @@ def diversity_transform_transmit_receive_otfs(coded_bits, G_DIV,
     # DD grid -> channel -> MMSE
     x_dd = map_bpsk_to_dd(qam_per_sub, SUBCHANNEL_MAP, N_D, M_D)
     y_dd = DDChannel.apply_fast(x_dd, h_dd, noise_var, rng)
-    x_hat_dd, snr_post = mmse_equalize_dd(y_dd, h_dd, noise_var)
+    h_eq = h_dd_eq if h_dd_eq is not None else h_dd
+    x_hat_dd, snr_post = mmse_equalize_dd(y_dd, h_eq, noise_var)
     rx_per_sub = extract_from_dd(x_hat_dd, SUBCHANNEL_MAP, n_sym_per_sub)
     snr_per_sub = extract_snr_from_dd(snr_post, SUBCHANNEL_MAP, n_sym_per_sub)
 
@@ -941,7 +978,7 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
                      max_erasures, K_rice, epsilon_th, p_block_sub,
                      shadow_loss_dB, polar_code, rng,
                      use_otfs=False, eta_ephemeris=None,
-                     ici_variance=0.0, polar_sub=None):
+                     ici_variance=0.0, polar_sub=None, rho_blk=0.0):
     """
     Run one MC trial for all 5 curves.
 
@@ -961,11 +998,11 @@ def mc_trial_one_snr(gamma_avg_SU, gamma_gs, N, K, n_subchannels,
     if use_otfs:
         h_dd, noise_var, gamma_e2e, blocked_mask = generate_dd_channel(
             gamma_avg_SU, gamma_gs, n_subchannels, K_rice,
-            p_block_sub, shadow_loss_dB, rng)
+            p_block_sub, shadow_loss_dB, rng, rho_blk=rho_blk)
     else:
         gamma_e2e, blocked_mask = generate_multipath_per_subchannel(
             gamma_avg_SU, gamma_gs, n_subchannels, K_rice, p_block_sub,
-            shadow_loss_dB, rng)
+            shadow_loss_dB, rng, rho_blk=rho_blk)
         # Apply ICI degradation for OFDM in high-Doppler
         if ici_variance > 0:
             gamma_e2e = gamma_e2e / (1.0 + gamma_e2e * ici_variance)
@@ -1219,3 +1256,121 @@ def mc_trial_variable_ns(gamma_avg_SU, gamma_gs, N, K, dt_config,
         'err_intlv': err_intlv,
         'err_fix': err_fix,
     }
+
+
+# ============================================================================
+#  Prediction robustness MC trial
+# ============================================================================
+
+def prediction_snr_ratio(elevation_true, elevation_pred):
+    """Per-subchannel SNR mismatch ratio from elevation angle error.
+
+    Returns ratio[j] = gamma_su_pred[j] / gamma_su_true[j], which captures
+    the path-loss and atmospheric-loss difference between the predicted and
+    true elevation angles.  The ratio is power-independent.
+    """
+    n = len(elevation_true)
+    ratio = np.ones(n)
+    for j in range(n):
+        slant_t = slant_range_m(elevation_true[j])
+        slant_p = slant_range_m(elevation_pred[j])
+        fspl_t = access_fspl_dB(slant_t)
+        fspl_p = access_fspl_dB(slant_p)
+        atm_t = atmospheric_loss_dB(elevation_true[j])
+        atm_p = atmospheric_loss_dB(elevation_pred[j])
+        delta_dB = (fspl_t + atm_t) - (fspl_p + atm_p)
+        ratio[j] = db_to_linear(delta_dB)
+    return ratio
+
+
+def mc_trial_prediction_robustness(gamma_avg_SU, gamma_gs, N, K,
+                                    n_subchannels, max_erasures,
+                                    K_rice, epsilon_th, p_block_sub,
+                                    shadow_loss_dB, polar_code, rng,
+                                    sigma_pred_dB,
+                                    elevation_angles_true=None,
+                                    sigma_pred_deg=0.0,
+                                    polar_sub=None):
+    """MC trial for prediction robustness study.
+
+    The TRUE channel is generated from gamma_avg_SU / gamma_gs.
+    Erasure and eta decisions use a PREDICTED e2e SNR with mismatch
+    from two independent error sources:
+
+      1. Elevation angle error (sigma_pred_deg): path-loss mismatch
+         from ephemeris / UE-location uncertainty.
+      2. Direct SNR prediction error (sigma_pred_dB): additional dB
+         perturbation from atmospheric-model mismatch and other
+         unmodelled factors.
+
+    Combined predicted SNR:
+      gamma_e2e_pred = gamma_e2e_true * ratio_elev * 10^(N(0,sigma_dB)/10)
+
+    Returns dict with err_proposed (diversity transform with mismatched
+    prediction) and err_baseline (per-subchannel Polar, no diversity).
+    """
+    h_dd, noise_var, gamma_e2e_true, blocked_mask = generate_dd_channel(
+        gamma_avg_SU, gamma_gs, n_subchannels, K_rice,
+        p_block_sub, shadow_loss_dB, rng)
+
+    R = K / N
+    N_sub = N // n_subchannels
+    K_sub = K // n_subchannels
+
+    gamma_e2e_pred = gamma_e2e_true.copy()
+
+    if sigma_pred_deg > 0 and elevation_angles_true is not None:
+        delta = rng.normal(0, sigma_pred_deg, n_subchannels)
+        elev_pred = np.clip(elevation_angles_true + delta, 10.0, 90.0)
+        ratio = prediction_snr_ratio(elevation_angles_true, elev_pred)
+        gamma_e2e_pred = gamma_e2e_pred * ratio
+
+    if sigma_pred_dB > 0:
+        delta_dB = rng.normal(0, sigma_pred_dB, n_subchannels)
+        gamma_e2e_pred = gamma_e2e_pred * db_to_linear(delta_dB)
+
+    erased_mask = np.array([
+        conditional_bler(gamma_e2e_pred[j], N_sub, R) > epsilon_th
+        for j in range(n_subchannels)
+    ])
+    eta = np.zeros(n_subchannels)
+    for j in range(n_subchannels):
+        if erased_mask[j]:
+            eta[j] = 0.0
+        else:
+            eta[j] = 1.0 - conditional_bler(gamma_e2e_pred[j], N_sub, R)
+
+    n_erased = int(np.sum(erased_mask))
+    info_bits = rng.integers(0, 2, size=K).astype(np.int8)
+
+    if n_erased > max_erasures:
+        err_proposed = True
+    else:
+        coded_bits = polar_code.encode(info_bits)
+        llr = diversity_transform_transmit_receive_otfs(
+            coded_bits, G_FIX, h_dd, noise_var,
+            gamma_e2e_true, erased_mask, eta, rng,
+            blocked_mask=blocked_mask)
+        if llr is None:
+            err_proposed = True
+        else:
+            decoded = polar_code.decode(llr)
+            err_proposed = not np.array_equal(decoded, info_bits)
+
+    if polar_sub is None:
+        N_sub_p2 = 1 << (N_sub.bit_length() - 1) if N_sub > 0 else 1
+        K_sub_p2 = max(1, int(K_sub * N_sub_p2 / max(N_sub, 1)))
+        K_sub_p2 = min(K_sub_p2, N_sub_p2 - 1)
+        polar_sub = PolarCode(N_sub_p2, K_sub_p2, design_snr_dB=1.0,
+                              list_size=8)
+    K_sub_actual = polar_sub.K
+
+    err_baseline = False
+    for j in range(n_subchannels):
+        sub_info = rng.integers(0, 2, size=K_sub_actual).astype(np.int8)
+        llr_j = polar_sub.encode_and_transmit(sub_info, gamma_e2e_true[j], rng)
+        if polar_sub.decode_check(sub_info, llr_j):
+            err_baseline = True
+            break
+
+    return {'err_proposed': err_proposed, 'err_baseline': err_baseline}

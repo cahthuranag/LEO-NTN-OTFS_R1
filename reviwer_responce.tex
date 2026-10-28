@@ -1,0 +1,115 @@
+This is the responce i wan recived from the reviwers.
+
+24-Apr-2026
+
+Paper: IoT-63987-2026 Diversity Transforms for OTFS-based LEO Non-Terrestrial Networks
+Authors: Dr. Haeyoung Lee, Basnayaka, Chathuranga M. Wijerathna; Lee, Haeyoung; Sooriarachchi, Vishalya P.; Kourtessis, Pandelis ; Senior, John M.
+Editor: Prof. Hiroaki Mukaidani
+
+Dear Dr. Lee,
+
+We have completed the review process of the above referenced paper for the IEEE Internet of Things Journal and recommend that your paper undergo a Major Revision.
+
+Your reviews are enclosed. We would suggest that you revise your paper according to the reviewers' comments and resubmit the paper for a second round of reviews.
+
+We hope you will be able to implement the comments of the reviewers.
+
+When you are ready to submit your revision, visit the following link:
+https://ieee.atyponrex.com/submission/submissionBoard/REX-PROD-2-78E95254-BFCB-4E6B-9883-D347316F4551-BE21EB8B-C9CE-4344-8D0B-E5AD38FD32DE-72880/current?idtype=external
+
+** EFFECTIVE IMMEDIATELY ** All revised papers must have the changes highlighted or underlined so they are easy to see.  Make sure that the highlighting or underlining will be visible when the file is printed.  This will help to speed up the Final Decision process for the editor.
+
+We would like to receive your revision within four (4) weeks, on  22-May-2026.  If this is not enough time, please request an extension so that we will know when to expect your revision.  
+
+We expect to hear from you within four weeks regarding your revision plans, either by submission of a revised paper or an e-mail requesting an extension.  If we do not hear from you, then we will assume that you are not planning a revision and will withdraw your entry from our database.
+
+If this happens, you can of course resubmit the paper as a new submission and the review process will start all over again. However, we recommend that you revise your current manuscript and return it within the time period specified.  In this case, the revision will go to the same Associate Editor and Reviewers for reevaluation.  If you can satisfy their suggestions, it will enhance your chances for more rapid publication.
+
+Please be sure to upload the revised manuscript in the Submitting Author's account.  That is the account that will have the manuscript number listed, with the extension .R1 if it is a first revision, .R2 if it is a second revision, etc.  Please do not submit your revised manuscript as new.  If you do not see this number listed with the proper extension or if you prefer to upload the revised manuscript in Dr. Lee's account, please send an e-mail to Surbhi Tyagi at surbhi.tyagi@ieee.org and she will assist you.
+
+If you have any questions regarding the reviews, please contact the Associate Editor: Prof. Hiroaki Mukaidani mukaida@hiroshima-u.ac.jp. Any other inquiries should be directed to the Administrative Assistant listed above.
+
+Thank you for considering IEEE Internet of Things Journal for publication of your work.
+
+Sincerely,
+Dr. Bo Li (IoT-J EiC)
+Editor-in-Chief, IEEE Internet of Things Journal
+ioteict@cse.ust.hk
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+• Associate Editor Comments, if any, are listed below:
+
+Associate Editor: Mukaidani, Hiroaki
+REQUIRED: Comments to Author:
+We have received valuable comments from four reviewers. Overall, they consider that the current version contains important contributions. In particular, the paper proposes a retransmission-free reliability architecture for OTFS-based LEO NTN downlinks, combining an MDS/Reed–Solomon diversity transform with ephemeris-driven subchannel reliability prediction and finite-blocklength BLER analysis. The topic is timely and technically interesting, with clear strengths in the algebraic recovery guarantees and in the integration of coding, OTFS, and finite-blocklength analysis. The numerical results are extensive and generally convincing. However, substantial revisions are required. In particular, the paper lacks robustness studies for prediction errors and correlated outages, relies on idealized assumptions regarding Doppler effects and channel estimation, and uses limited baseline methods for comparison. Clearer assumptions on latency, a discussion of implementation complexity, and a clarification of the scope are also needed. Therefore, I recommend a major revision.
+
+• Reviewer Comments, if any, are listed below:
+
+Reviewer: 1
+
+Comments to the Author
+This paper studies a retransmission-free reliability architecture for OTFS-based LEO NTN downlinks. The main idea is to insert a diversity transform between the FEC encoder and the modulator, construct the transform from an MDS/Reed–Solomon code, predict subchannel reliability using ephemeris-driven large-scale channel information, and then exploit the resulting block-erasure structure at the receiver. The paper also develops a finite-blocklength BLER analysis for the OTFS transparent-relay setting and provides simulation results over a range of parameters. Overall, I find the topic timely and the paper technically interesting. The algebraic recovery guarantee in Theorem 2 is the clearest strength of the work, and the combination of coding, OTFS, and finite-blocklength analysis is a meaningful contribution.
+The numerical section is also reasonably broad. The manuscript reports good agreement between the analytical BLER approximation and Monte Carlo simulation, shows improvements over non-diversity polar-coded baselines, studies elevation angle, blockage probability, number of subchannels, and Doppler sensitivity, and argues for a latency advantage over HARQ-CC. These are all positive aspects and they make the paper more than a purely mathematical exercise.
+That said, I believe the manuscript still needs a substantial revision before it is ready for publication in a transactions journal.
+First, the paper’s practical validation is not yet strong enough relative to the strength of its claims. A central component of the framework is the ephemeris-driven prediction layer, but the current analysis assumes effectively perfect ephemeris knowledge and does not provide a sensitivity study with respect to prediction error, user-location error, atmospheric-model mismatch, or prediction horizon. Since the diversity transform is proactively selected based on predicted outage patterns, the robustness of the design to prediction mismatch is essential. Please add a dedicated robustness study showing how BLER/latency degrade when the predicted reliability scores are imperfect.
+Second, the manuscript repeatedly motivates the problem using simultaneous outages and correlated satellite visibility/blockage behavior, especially at low elevation. However, the high-SNR system BLER approximation in Corollary 2 is explicitly built on statistically independent subchannel failures, even though the algebraic recovery guarantee itself is correlation-agnostic. This creates a gap between the motivation and the system-level performance analysis. I strongly encourage the authors to add experiments with correlated outage models, for example common blockage states, correlated shadowing, or geometry-driven correlated low-elevation events, and to discuss how much of the reported gain survives under such conditions.
+Third, the OTFS part needs a more realistic impairment study. The manuscript explicitly notes that fractional Doppler and imperfect channel estimation may reduce the effective delay-Doppler diversity order, and later states that the analysis assumes integer Doppler indices. This limitation is too important to remain mostly a caveat in the text. Please quantify the performance gap under fractional Doppler and imperfect channel estimation, because this is directly tied to the claimed advantage over OFDM in high-mobility LEO settings.
+Fourth, the system model relies heavily on the dominant feeder-link approximation. Table I and the numerical discussion state that the feeder-link SNR exceeds the access-link SNR by more than 39 dB, which justifies the simplifications used in the derivations. However, this also narrows the operating regime represented by the results. Please clarify more explicitly the applicability range of the theory when feeder-link degradation is non-negligible, especially under feeder-link weather impairment in Ka/Q-band operation. A sensitivity plot showing weaker feeder-link conditions would strengthen the paper considerably.
+Fifth, the baseline section should be strengthened and made more explicit. The manuscript compares primarily against standalone polar coding, with and without interleaving, and later against OFDM under Doppler and HARQ-CC in terms of latency. This is useful, but the paper’s main claim is about replacing conventional multi-connectivity diversity approaches that rely on statistical combining. Therefore, a more direct baseline discussion against satellite diversity with selection combining or MRC at the system level would improve fairness and sharpen the contribution. Even if a full new implementation is not added, the manuscript should explain more clearly why the current baselines are sufficient and what aspects are not being compared.
+Sixth, the latency and throughput claims should be presented more carefully and transparently. The paper reports that the diversity-transform scheme can outperform the baselines in throughput over a medium-power regime despite operating at a lower effective code rate, and the conclusion claims more than 90% reduction in median transmission latency for strict reliability targets. These are potentially strong results, but the presentation would be more convincing if the manuscript explicitly stated the exact HARQ-CC assumptions, maximum retransmission policy, latency metric definition, and representative numerical gains in the main text instead of leaving some of this implicit in the figure discussion.
+Seventh, a transactions paper should also comment on implementation cost. The manuscript highlights “single-pass diversity demapping and FEC decoding,” but it does not provide much discussion of encoder/decoder complexity, transform construction/update overhead, memory footprint, or signaling overhead when the transform changes with the predicted outage family. A short complexity discussion, even if asymptotic, would improve the practical value of the paper.
+On presentation, the paper is generally readable, but it is dense. The notation is heavy and sometimes the distinction between variables such as n, ns, Nserv, kc, ϱ, and nout is harder to follow than necessary. I suggest adding a compact notation table and tightening some of the longer explanatory paragraphs in Sections II–IV. The English is understandable, but it would benefit from another round of polishing for conciseness and grammar. Figure captions could also be slightly more self-contained.
+In summary, I think the paper has real merit: the core algebraic idea is interesting, the finite-blocklength angle is valuable, and the problem is relevant. However, the current version still falls short of the level of practical validation and scope clarification I would expect for acceptance. I therefore recommend a major revision. If the authors can add robustness experiments for imperfect prediction and correlated outages, quantify the impact of fractional Doppler/channel-estimation errors, and clarify the scope, baselines, and implementation cost, the paper could become much stronger.
+
+
+Reviewer: 2
+
+Comments to the Author
+The paper introduces a diversity transform framework integrated with OTFS modulation to improve link reliability in LEO NTN downlinks without relying on retransmissions. The authors derive finite-blocklength BLER expressions under Rician fading and propose an ephemeris-driven outage prediction mechanism. The combination of MDS-coded diversity transforms with polar codes is a promising direction. However, several significant issues must be addressed.
+1. The paper compares against “standalone FEC” and “FEC with interleaving”. However, existing satellite diversity methods such as maximal ratio combining (MRC), selection combining (SC), and HARQ with chase combining are only briefly mentioned in the introduction. No quantitative comparison with MRC/SC-based multi-connectivity is provided in the numerical results. The authors could include a baseline that uses MRC across subchannels (without the diversity transform) and show the BLER vs. SNR or blockage probability.
+2. The proposed prediction framework in Section III-B relies on perfect ephemeris knowledge and assumes negligible UE location error. No sensitivity analysis is provided for ephemeris errors, UE positioning inaccuracies, or atmospheric model mismatches.
+3. Theorem 1 and Proposition 1 assume: Perfect channel estimation at the receiver; No fractional Doppler (integer Doppler indices only); Ideal MRC combining in the DD domain. These assumptions are not fully justified for LEO NTN scenarios, where fractional Doppler is common and channel estimation errors are non-negligible.
+4. It is not explained how the SCL decoder operates on the soft outputs of the diversity demapper, does it treat the combined code as a single polar code with a larger length? Or does it decode each subword independently?
+5. The sensitivity of the overall system BLER to this threshold should be explored. Does the MDS recovery guarantee still hold if the threshold is lowered to 0.01? How does the choice affect the number of predicted outages and the effective rate?
+
+
+Reviewer: 3
+
+Comments to the Author
+The manuscript proposes a diversity-based OTFS system that integrates FEC with transmission diversity, supported by an ephemeris-driven framework for subchannel reliability prediction. In addition, it provides a rigorous finite-blocklength BLER analysis under various scenarios, including dominant-LOS, high-SNR, and Rayleigh fading conditions. While the motivation is sound and the mathematical framework shows potential in enhancing LEO satellite communication reliability, the overall contribution requires further clarification and improvement. Specific shortcomings regarding the system model assumptions, benchmarking, and presentation are summarized below.
+1. In the manuscript, the reliability of each subchannel is inferred from outage probabilities derived based on large-scale fading, while the impact of small-scale fading appears to be marginalized. However, in satellite communication systems, multipath-induced frequency-selective fading and Doppler-induced fast time-varying fading can significantly affect the performance of FEC and diversity, especially in high-mobility scenarios. It is recommended that the authors explicitly incorporate the impact of small-scale fading into the reliability prediction analysis.
+2. The discussion of diversity techniques in the paper appears to be limited. The current work mainly compares the proposed scheme with conventional linear combining methods, such as SC and MRC. However, recent studies have explored more advanced diversity combining strategies, including robust combining, nonlinear combining, and AI-based approaches, which may offer improved performance under complex channel conditions. The authors should broaden the literature review and discussion on this aspect.
+3. The manuscript implies that the diversity transform matrix $G_{\mathrm{DIV}}$ is constructed based on time-varying outage patterns predicted by ephemerides. However, it does not clearly specify how $G_{\mathrm{DIV}}$ is updated dynamically at the physical layer. Furthermore, due to the different propagation distances between multiple satellites and the gateway, timing advance (TA) should be critically considered in the construction of the $G_{\mathrm{DIV}}$ matrix to ensure block-level synchronization among satellites.
+4. In the numerical results, the paper only considers polar codes for performance evaluation, without comparing against other widely adopted FEC schemes in satellite communication(e.g., LDPC or Turbo codes). Moreover, the performance under different code rates is not sufficiently explored. Since the effectiveness of the proposed joint framework may highly depend on the specific coding scheme and rate, the lack of such comparisons makes it difficult to assess the generality of the conclusions.
+5. Although extensive simulations are presented, there appears to be a lack of comparison with existing integrated schemes. The authors are requested to benchmark their proposed architecture against recent relevant studies, rather than solely comparing it with isolated baseline components.
+6. In Section III-A, the OTFS frame blocklength is defined as $n_c = N_D M_D$. Later, in Section IV-B, the Polar code blocklength is introduced as $N$ (i.e., an $(N, K)$ polar code), and $N$ is also used in Figure 7. It is not explicitly stated whether the Polar codeword length strictly matches the OTFS frame length (i.e., $n_c = N$), or if multiple Polar codewords are mapped onto a single OTFS frame. The authors should explicitly clarify this mapping relationship to prevent reader confusion regarding the system's frame structure.
+
+Reviewer: 4
+
+Comments to the Author
+Simplifying Assumptions in the Channel Model
+   The paper assumes a deterministic high-Line-of-Sight (LOS) scenario for the satellite feeder link (Eq. 11), but fails to fully account for multipath effects and dynamic channel variations inherent in practical LEO satellite networks. It is recommended that the model be further refined to enhance its generalizability.
+
+Construction Method of Diversity Transform
+   While the manuscript mentions constructing the diversity transform matrix based on Reed-Solomon codes, it lacks a detailed discussion on the performance trade-offs regarding finite code lengths and practical channels. I suggest adding a discussion on construction complexity and decoding latency.
+
+Applicability of Finite Blocklength Analysis
+   The finite blocklength analysis provided focuses primarily on OTFS performance over Rician fading channels but does not extend to broader fading models (e.g., Nakagami-m). It would be beneficial to include comparative experiments in the simulation section.
+
+Completeness of Simulation Verification
+   Although the simulation results demonstrate improvements in BLER and latency, the specific parameter settings (such as detailed channel coding parameters and OTFS frame structure) are not clearly described. Please supplement these details to ensure the reproducibility of the results.
+
+Alternatives for CSI Feedback
+   While an ephemeris-driven prediction framework is proposed, its robustness under extreme weather or highly dynamic scenarios is not discussed. Further analysis regarding the impact of prediction errors on system performance is suggested.
+
+Integration Details of Diversity Transform and FEC
+   The paper mentions using Polar codes as the FEC component but does not deeply explore the co-design with the diversity transform layer (e.g., rate allocation, decoder design). Relevant technical details should be supplemented.
+
+Limitations of System Latency Analysis
+   The manuscript discusses overall latency but overlooks the impact of latency discrepancies between different sub-channels on the performance of the diversity transform. Further analysis on adaptability in asynchronous transmission scenarios is recommended.
+
+Feasibility of Practical Deployment
+   The compatibility of the proposed diversity transform with existing satellite communication standards (such as 3GPP NTN) is not addressed. A discussion on standardization and practical deployment is advised.
+
+Citation Completeness of Related Work
+   The paper cites several works on OTFS and finite blocklength analysis; however, regarding channel estimation—particularly near-field XL-MIMO channel estimation in low SNR scenarios—the following recent study could be referenced:"Enhanced Polar-Domain Channel Estimation for Near-Field XL-MIMO in Low-SNR Scenarios." This work proposes innovative methods for channel estimation in massive MIMO systems and is strongly relevant to the theme of reliability enhancement in high-dynamic channels discussed in this manuscript. Citing it would enrich the discussion of related work. 

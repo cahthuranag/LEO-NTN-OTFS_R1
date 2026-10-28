@@ -156,7 +156,7 @@ def plot(results):
                label='Prop. 2'),
         Line2D([0], [0], linestyle='none', marker='o', color='black',
                ms=4, mew=1.0, mfc='none',
-               label='MC simulation'),
+               label='Simulation'),
     ]
     ax.legend(handles=legend_handles, fontsize=7, loc='upper right',
               framealpha=1.0)

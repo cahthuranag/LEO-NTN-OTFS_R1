@@ -135,7 +135,7 @@ def simulate(R_c=0.5, n_subchannels=N_S,
       - HARQ-CC: chase combining with SNR accumulation across retx
     """
     if P_total_dBW_values is None:
-        P_total_dBW_values = [5.0, 8.0, 10.0]
+        P_total_dBW_values = [5.0, 10.0]
 
     # Precompute HARQ-CC latency lookup: for a given gamma, compute
     # latency for all eps targets at once (avoids redundant grid search)
@@ -204,6 +204,8 @@ def simulate(R_c=0.5, n_subchannels=N_S,
 
         lat_div_all = np.zeros((n_mc, n_eps))
         lat_harq_all = np.zeros((n_mc, n_eps))
+        lat_mrc_all = np.zeros((n_mc, n_eps))
+        lat_sc_all = np.zeros((n_mc, n_eps))
 
         print(f"\n  P_total={P_total_dBW:.0f} dBW:")
 
@@ -218,15 +220,31 @@ def simulate(R_c=0.5, n_subchannels=N_S,
             if len(non_blocked) == 0:
                 lat_div_all[mc, :] = np.inf
                 lat_harq_all[mc, :] = np.inf
+                lat_mrc_all[mc, :] = np.inf
+                lat_sc_all[mc, :] = np.inf
                 continue
 
             gamma = np.mean(non_blocked)
+            gamma_mrc = np.sum(non_blocked)
+            gamma_sc = np.max(non_blocked)
 
             # Diversity transform (single shot, relaxed target)
             for i, eps_sys in enumerate(eps_sys_targets):
                 eps_star = _epsilon_star(eps_sys, n_s, d_min)
                 n_c_div = _min_blocklength(eps_star, gamma, R_c)
                 lat_div_all[mc, i] = _frame_duration_ms(n_c_div)
+
+            # MRC: single shot, combined SNR
+            # MRC carries K = n_c*R_c per frame (repeated codeword),
+            # while DT carries K = k_c*n_c*R_c. Scale by k_c for same K.
+            for i, eps_sys in enumerate(eps_sys_targets):
+                n_c_mrc = _min_blocklength(eps_sys, gamma_mrc, R_c)
+                lat_mrc_all[mc, i] = k_c * _frame_duration_ms(n_c_mrc)
+
+            # SC: single shot, best subchannel SNR (same K scaling)
+            for i, eps_sys in enumerate(eps_sys_targets):
+                n_c_sc = _min_blocklength(eps_sys, gamma_sc, R_c)
+                lat_sc_all[mc, i] = k_c * _frame_duration_ms(n_c_sc)
 
             # HARQ-CC with combining gain (batch all eps targets)
             lat_harq_all[mc, :] = _harqcc_batch(eps_sys_targets, gamma, R_c)
@@ -235,8 +253,8 @@ def simulate(R_c=0.5, n_subchannels=N_S,
                 print(f"    MC trial {mc+1}/{n_mc}")
 
         # Geometric mean (exp of mean of log) — smooth on log-scale
-        # Exclude inf trials
-        for tag, arr in [('div', lat_div_all), ('harq', lat_harq_all)]:
+        for tag, arr in [('div', lat_div_all), ('harq', lat_harq_all),
+                         ('mrc', lat_mrc_all), ('sc', lat_sc_all)]:
             geo = np.zeros(n_eps)
             for i in range(n_eps):
                 col = arr[:, i]
@@ -251,6 +269,8 @@ def simulate(R_c=0.5, n_subchannels=N_S,
             idx = np.argmin(np.abs(eps_sys_targets - eps_t))
             print(f"    eps_sys={eps_t:.0e}: "
                   f"DIV={results[f'latency_div_S{s_idx}'][idx]:.4f}ms | "
+                  f"MRC={results[f'latency_mrc_S{s_idx}'][idx]:.4f}ms | "
+                  f"SC={results[f'latency_sc_S{s_idx}'][idx]:.4f}ms | "
                   f"HARQ-CC={results[f'latency_harq_S{s_idx}'][idx]:.4f}ms")
 
     return results
@@ -263,35 +283,43 @@ def plot(results):
     eps = results['eps_sys_targets']
     P_values = results['P_total_dBW_values']
 
-    colors = ['#1f77b4', '#2ca02c', '#d62728']
-    div_markers = ['o', 's', '^']
-    harq_markers = ['v', 'D', 'x']
+    scheme_cfg = {
+        'div':  {'color': '#ff7f0e', 'marker': 'o', 'lw': 1.8, 'ms': 5.25},
+        'mrc':  {'color': '#1f77b4', 'marker': 's', 'lw': 1.5, 'ms': 4.5},
+        'sc':   {'color': '#2ca02c', 'marker': '^', 'lw': 1.5, 'ms': 4.5},
+        'harq': {'color': '#d62728', 'marker': 'x', 'lw': 1.5, 'ms': 5.25},
+    }
+    scheme_labels = {
+        'div':  r'$\mathbf{{G}}_{{\mathrm{{DIV}}}}$',
+        'mrc':  'MRC',
+        'sc':   'SC',
+        'harq': 'HARQ-CC',
+    }
+    power_ls = ['-', '--']
+    power_mfc = ['fill', 'none']
     marker_every = max(1, len(eps) // 10)
 
     for s_idx, P_dBW in enumerate(P_values):
-        c = colors[s_idx % len(colors)]
         P_label = rf'{P_dBW:.0f}'
+        ls = power_ls[s_idx]
 
-        # Diversity transform (solid + markers)
-        ax.plot(eps, results[f'latency_div_S{s_idx}'],
-                '-', color=c, lw=1.2, marker=div_markers[s_idx],
-                ms=3.5, mew=0.8, markevery=marker_every,
-                label=rf'$\mathbf{{G}}_{{\mathrm{{DIV}}}}$, $P\!=\!{P_label}$ dBW')
-
-        # HARQ-CC (dashed + markers)
-        ax.plot(eps, results[f'latency_harq_S{s_idx}'],
-                '--', color=c, lw=1.0, marker=harq_markers[s_idx],
-                ms=3.5, mew=0.8, mfc='none', markevery=marker_every,
-                label=rf'HARQ-CC, $P\!=\!{P_label}$ dBW')
+        for tag in ['div', 'mrc', 'sc', 'harq']:
+            sc = scheme_cfg[tag]
+            mfc = sc['color'] if power_mfc[s_idx] == 'fill' else 'none'
+            ax.plot(eps, results[f'latency_{tag}_S{s_idx}'],
+                    ls, color=sc['color'], lw=sc['lw'],
+                    marker=sc['marker'], ms=sc['ms'], mew=0.8,
+                    mfc=mfc, markevery=marker_every,
+                    label=rf'{scheme_labels[tag]}, $P\!=\!{P_label}$ dBW')
 
     ax.set_xlabel(r'Target system BLER $\epsilon_{\mathrm{sys}}^{\mathrm{target}}$')
     ax.set_ylabel('Transmission latency (ms)')
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.invert_xaxis()
-    ax.legend(fontsize=5.5, loc='lower right', framealpha=1.0,
-              ncol=1, handletextpad=0.5, handlelength=2.0,
-              borderpad=0.4, labelspacing=0.3)
+    ax.legend(fontsize=4.5, loc='lower right', framealpha=1.0,
+              ncol=2, handletextpad=0.4, handlelength=2.0,
+              borderpad=0.4, labelspacing=0.25, columnspacing=0.8)
     ax.grid(True, which='both', ls='--', alpha=0.3)
 
     save_figure(fig, 'latency_comparison')
@@ -306,6 +334,8 @@ def save_csv(results):
         header = ['eps_sys_target']
         for s_idx, P_dBW in enumerate(P_values):
             header += [f'latency_div_{P_dBW:.0f}dBW',
+                       f'latency_mrc_{P_dBW:.0f}dBW',
+                       f'latency_sc_{P_dBW:.0f}dBW',
                        f'latency_harq_{P_dBW:.0f}dBW']
         w.writerow(header)
 
@@ -313,6 +343,8 @@ def save_csv(results):
             row = [f"{eps[i]:.6e}"]
             for s_idx in range(len(P_values)):
                 row.append(f"{results[f'latency_div_S{s_idx}'][i]:.6e}")
+                row.append(f"{results[f'latency_mrc_S{s_idx}'][i]:.6e}")
+                row.append(f"{results[f'latency_sc_S{s_idx}'][i]:.6e}")
                 row.append(f"{results[f'latency_harq_S{s_idx}'][i]:.6e}")
             w.writerow(row)
 
@@ -320,6 +352,6 @@ def save_csv(results):
 
 
 if __name__ == "__main__":
-    results = simulate()
+    results = simulate(n_mc=1000)
     plot(results)
     save_csv(results)

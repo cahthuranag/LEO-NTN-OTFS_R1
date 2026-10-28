@@ -1,0 +1,104 @@
+\documentclass{NSF}
+\usepackage[linewidth=1pt]{mdframed} % Draw box
+\graphicspath{{figures/}}
+\usepackage{graphicx}
+\usepackage{algorithmic}
+\usepackage{textcomp}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{lipsum}
+\usepackage{xcolor}
+\usepackage{blindtext}
+\usepackage{hhline}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{subcaption} % For subfigure environment
+\usepackage{IEEEtrantools}
+\usepackage{ulem}
+\usepackage{array}
+\usepackage{cite}
+\newcommand\Mark[1]{\textsuperscript#1}
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{float}
+\usepackage{dirtytalk}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{makecell,tabularx}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{tikz}
+\usepackage{amssymb}
+\usepackage{caption}
+\usepackage{pifont}
+\usepackage{comment}
+\usepackage{ragged2e}
+\usepackage{microtype}
+\usepackage{makecell,tabularx}
+\usepackage{siunitx}
+\usepackage{breqn}
+\usepackage{tabularx,booktabs}
+\usepackage{eucal}
+\usepackage{xr}
+\externaldocument{paper}
+
+% --- Other packages ---
+\usepackage{array}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows,shapes,patterns}
+\usepackage{balance}
+\usepackage{enumitem}
+\usepackage{mdframed}
+\usepackage{bm}
+
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+
+
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\setlength{\extrarowheight}{1pt}
+\begin{document}
+% First Title Page
+\input{title_page.tex}
+
+% Authors message to Editors & Reviewers
+\input{sections/AuthorsMessage}
+
+% Response to the Editor
+\newpage
+\input{sections/ResponseToEditors}
+
+% Response to Reviewer #1
+\newpage
+\input{sections/Reviewer1}
+ %Response to Reviewer #2
+\newpage
+\input{sections/Reviewer2}
+% Response to Reviewer #3
+\newpage
+\input{sections/Reviewer3}
+%Response to Reviewer #3
+\newpage
+\input{sections/Reviewer4}
+%\newpage
+%\bibliographystyle{plain} % Plain referencing style
+%\bibliography{sections/literature}
+%\begin{thebibliography}{1}
+%\bibitem{Corsi}
+%C. Corsi, ``Smart sensors: why and when the origin was and why and where the future will be,'' in \textit{Quantum Sensing and Nanophotonic Devices XI}, 2013.
+
+%\bibliographystyle{IEEEtran}
+ %   \bibliography{references}
+\end{document}

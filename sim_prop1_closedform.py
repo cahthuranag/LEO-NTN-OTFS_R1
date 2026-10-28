@@ -20,12 +20,16 @@ from sim_common import ieee_setup, save_figure, L_TAPS, TAP_POWERS_LIN, db_to_li
 from fbl_analysis import FiniteBlocklengthBLER, conditional_bler
 
 
+FEEDER_MARGINS_DB = [10.0, 3.0]
+
+
 def simulate(blocklengths=None, K_ratio=0.75, snr_range_dB=(-5, 3),
              n_points=50, n_mc=100000, K_rice=2.0):
     """
     Sweep average SNR in the transition region around γ_th.
 
     Uses the dominant-LOS model matching the paper's analytical framework.
+    Also computes MC BLER under reduced feeder-link margins for n_c=256.
     """
     if blocklengths is None:
         blocklengths = [64, 128, 256, 1024]
@@ -48,6 +52,7 @@ def simulate(blocklengths=None, K_ratio=0.75, snr_range_dB=(-5, 3),
     print(f"  R={R:.2f}, γ_th={gamma_th:.4f}, L_TAPS={L_TAPS}")
     print(f"  γ_det = γ_th at SNR = {snr_transition_dB:.1f} dB")
     print(f"  Blocklengths: {blocklengths}, MC={n_mc}")
+    print(f"  Feeder-link margins for sensitivity: {FEEDER_MARGINS_DB} dB")
 
     results = {'snr_dB': snr_dB_arr, 'blocklengths': blocklengths,
                'transition_dB': snr_transition_dB}
@@ -94,6 +99,25 @@ def simulate(blocklengths=None, K_ratio=0.75, snr_range_dB=(-5, 3),
         print(f"  N={N}: Prop1={bler_closed[n_points//2]:.4e}, "
               f"MC={bler_mc[n_points//2]:.4e}")
 
+    # Feeder-link sensitivity curves for n_c=256
+    N_fade = 256
+    K_fade = int(N_fade * K_ratio)
+    R_fade = K_fade / N_fade
+    for margin_dB in FEEDER_MARGINS_DB:
+        margin_lin = db_to_linear(margin_dB)
+        bler_fade = np.zeros(n_points)
+        for idx in range(n_points):
+            gamma_gs = snr_lin_arr[idx] * margin_lin
+            bler_sum = 0.0
+            for trial in range(n_mc):
+                gamma_su_mrc = gamma_inst_all[idx, trial]
+                gamma_e2e = (gamma_gs * gamma_su_mrc) / (gamma_gs + gamma_su_mrc + 1.0)
+                bler_sum += conditional_bler(gamma_e2e, N_fade, R_fade)
+            bler_fade[idx] = bler_sum / n_mc
+        key = f'mc_fade_{margin_dB:.0f}dB_N{N_fade}'
+        results[key] = bler_fade
+        print(f"  N={N_fade}, Δ_GS={margin_dB}dB: MC={bler_fade[n_points//2]:.4e}")
+
     return results
 
 
@@ -130,9 +154,25 @@ def plot(results):
                         linestyle='--', marker=mkrs[i],
                         color=colors_n[i], ms=4, mew=1.0,
                         mfc='none',
-                        label=rf'MC, $n_c\!=\!{N}$')
+                        label=rf'Sim., $n_c\!=\!{N}$')
 
-    ax.legend(fontsize=5.5, loc='lower left', framealpha=1.0,
+    # Feeder-link sensitivity curves
+    fade_colors = ['#8c564b', '#e377c2']
+    fade_mkrs = ['v', '+']
+    for fi, margin_dB in enumerate(FEEDER_MARGINS_DB):
+        key = f'mc_fade_{margin_dB:.0f}dB_N256'
+        if key not in results:
+            continue
+        fade = results[key]
+        mask = fade > 1e-8
+        if np.any(mask):
+            ax.semilogy(snr[mask], fade[mask],
+                        linestyle='-.', marker=fade_mkrs[fi],
+                        color=fade_colors[fi], lw=1.0, ms=4, mew=1.0,
+                        mfc='none',
+                        label=rf'Sim., $n_c\!=\!256$, $\bar{{\gamma}}_{{GS}}/\bar{{\gamma}}_{{SU}}={margin_dB:.0f}$ dB')
+
+    ax.legend(fontsize=5.0, loc='lower left', framealpha=1.0,
               ncol=2, handletextpad=0.4, handlelength=1.8,
               columnspacing=0.8, borderpad=0.3, labelspacing=0.25)
 
@@ -150,6 +190,8 @@ def save_csv(results):
     keys = []
     for N in blocklengths:
         keys += [f'closed_N{N}', f'mc_N{N}']
+    for margin_dB in FEEDER_MARGINS_DB:
+        keys.append(f'mc_fade_{margin_dB:.0f}dB_N256')
 
     with open('prop1_closedform_validation.csv', 'w', newline='') as f:
         w = csv.writer(f)
@@ -163,6 +205,6 @@ def save_csv(results):
 
 
 if __name__ == "__main__":
-    results = simulate(n_mc=1000000)
+    results = simulate(n_mc=500000)
     plot(results)
     save_csv(results)
